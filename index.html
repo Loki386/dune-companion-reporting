@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dune Drop Rates</title>
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --text: #1d1c1a; --muted: #6b6862; --border: #e2dfd8;
+  --accent: #b5651d; --accent-soft: #f3e4d5; --ok: #2f7d4f; --ok-soft: #e1f1e7;
+  --bad: #a33a2b; --bad-soft: #f6e1dd; --warn: #8a6d1a; --warn-soft: #f5edd2; --bar: #d9a066;
+  --chart-surface: #fcfcfb; --grid: #e1e0d9; --axis: #c3c2b7; --axis-ink: #898781;
+  --series-1: #2a78d6; --series-2: #eb6834;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161513; --panel: #201f1c; --text: #ece9e2; --muted: #a29e95; --border: #34322d;
+    --accent: #e0954f; --accent-soft: #3a2c1e; --ok: #6cc08f; --ok-soft: #1c3226;
+    --bad: #e2826f; --bad-soft: #3b211c; --warn: #d8b85a; --warn-soft: #352d16; --bar: #8a5a2c;
+    --chart-surface: #1a1a19; --grid: #2c2c2a; --axis: #383835; --axis-ink: #898781;
+    --series-1: #3987e5; --series-2: #d95926;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161513; --panel: #201f1c; --text: #ece9e2; --muted: #a29e95; --border: #34322d;
+  --accent: #e0954f; --accent-soft: #3a2c1e; --ok: #6cc08f; --ok-soft: #1c3226;
+  --bad: #e2826f; --bad-soft: #3b211c; --warn: #d8b85a; --warn-soft: #352d16; --bar: #8a5a2c;
+  --chart-surface: #1a1a19; --grid: #2c2c2a; --axis: #383835; --axis-ink: #898781;
+  --series-1: #3987e5; --series-2: #d95926;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 16px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+h1 { font-size: 18px; margin: 0 12px 0 0; }
+h2 { font-size: 15px; margin: 0 0 8px; }
+main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+button, select, input[type=number], input[type=search], input[type=text] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+.tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 14px; }
+.tabs button.active { background: var(--accent-soft); border-color: var(--accent); }
+.muted { color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+label { display: inline-flex; gap: 6px; align-items: center; }
+#drop { border: 2px dashed var(--border); border-radius: 10px; padding: 48px 16px; text-align: center; background: var(--panel); }
+body.dragging #drop, body.dragging #addZone { border-color: var(--accent); background: var(--accent-soft); }
+#addZone { border: 2px dashed var(--border); border-radius: 8px; padding: 14px; text-align: center; margin-top: 10px; }
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; cursor: pointer; user-select: none; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: var(--accent-soft); }
+tr.ineligible td { color: var(--muted); }
+tr.detail td { white-space: normal; background: var(--bg); }
+tr.selected td { background: var(--accent-soft); }
+#dropTable tbody tr[data-item] { cursor: pointer; }
+.pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; margin: 1px 2px 1px 0; }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.manual { background: var(--accent-soft); color: var(--accent); }
+.pill.bp { background: var(--accent-soft); color: var(--accent); }
+.item-section { margin-bottom: 14px; }
+.item-section h2 { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.item-section h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
+.bar { position: relative; }
+.bar span { position: relative; z-index: 1; }
+.bar::before { content: ""; position: absolute; right: 0; top: 4px; bottom: 4px; width: var(--w, 0%); background: var(--bar); opacity: .35; border-radius: 3px; }
+.stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 120px; }
+.stat b { display: block; font-size: 20px; }
+.loot-list { columns: 3 220px; font-size: 13px; }
+.hidden { display: none !important; }
+
+#chartPanel .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 4px 0 8px; }
+#chartPanel .legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+#chartBox { position: relative; background: var(--chart-surface); border-radius: 6px; }
+#chartBox svg { display: block; width: 100%; height: 320px; }
+#chartBox text { font: 11px system-ui, sans-serif; fill: var(--axis-ink); }
+#chartBox text.end-label { font-size: 12px; fill: var(--text); }
+#tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap; }
+#tip .k { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
+@media (max-width: 640px) { header, main { padding: 12px 16px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dune Drop Rates</h1>
+  <span id="fileInfo" class="muted">No exports loaded</span>
+  <span style="flex:1"></span>
+  <input type="file" id="fileInput" accept=".json,application/json" multiple class="hidden">
+  <button id="openBtn">Add exports…</button>
+  <button id="exportSel" title="Save your include/exclude choices to a file">Save selections</button>
+  <input type="file" id="importInput" accept=".json" class="hidden">
+  <button id="importBtn">Load selections</button>
+</header>
+<main>
+  <div id="drop">
+    <p><b>Drop one or more <code>dune-sessions-*.json</code> exports here</b></p>
+    <p class="muted">Or use “Add exports…”. Files are only read in this browser, and they're remembered here so you don't have to add them again next time.</p>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="tabs">
+      <button data-tab="exports">1 · Exports</button>
+      <button data-tab="sessions" class="active">2 · Pick sessions</button>
+      <button data-tab="items">3 · Items</button>
+      <button data-tab="drops">4 · Drop rates</button>
+    </div>
+
+    <section id="tab-exports" class="hidden">
+      <div class="panel">
+        <h2>Loaded exports</h2>
+        <p class="muted" style="margin-top:0">Each export is one account. Give each a name so you can tell them apart. If the same session shows up in more than one export (for example an older and newer export from the same account), the copy from the newest export is used.</p>
+        <div class="table-wrap"><table id="srcTable"><thead><tr><th>Account name</th><th>File</th><th>Exported</th><th class="num">Sessions</th><th class="num">Used</th><th>Characters</th><th></th></tr></thead><tbody></tbody></table></div>
+        <div id="addZone" class="muted">Drop more exports anywhere on the page, or use “Add exports…”.</div>
+        <p id="storeNote" class="muted"></p>
+      </div>
+    </section>
+
+    <section id="tab-sessions">
+      <p class="muted" style="margin:0 0 14px">Sessions where every run is the same dungeon and level are included automatically. Untick any row to leave it out.</p>
+      <div class="panel row">
+        <label>Account <select id="fSource"></select></label>
+        <label>Dungeon <select id="fDungeon"></select></label>
+        <label>Level <select id="fLevel"></select></label>
+        <label>Character <select id="fChar"></select></label>
+        <label>Show <select id="fStatus">
+          <option value="eligible">Single dungeon/level</option>
+          <option value="included">Included</option>
+          <option value="excluded">Excluded</option>
+          <option value="all">All sessions</option>
+        </select></label>
+        <span style="flex:1"></span>
+        <button id="incAll">Include shown</button>
+        <button id="excAll">Exclude shown</button>
+      </div>
+      <div class="stats" id="sessStats"></div>
+      <div class="table-wrap"><table id="sessTable"><thead></thead><tbody></tbody></table></div>
+    </section>
+
+    <section id="tab-items" class="hidden">
+      <div class="panel row">
+        <p class="muted" style="margin:0;flex:1 1 300px">Untick an item to leave it out of the drop rates. Augments and Blueprints list only blueprint drops; the items they craft are under Other. Counts cover every loaded session.</p>
+        <label><input type="search" id="iSearch" placeholder="Filter items…"></label>
+      </div>
+      <div id="itemSections"></div>
+    </section>
+
+    <section id="tab-drops" class="hidden">
+      <div class="panel row">
+        <label>Account <select id="dSource"></select></label>
+        <label>Dungeon <select id="dDungeon"></select></label>
+        <label>Level <select id="dLevel"></select></label>
+        <label><input type="search" id="dSearch" placeholder="Filter items…"></label>
+        <label><input type="checkbox" id="dCurrencies" checked> Include currencies</label>
+      </div>
+      <div class="stats" id="dropStats"></div>
+
+      <div class="panel" id="chartPanel">
+        <div class="row">
+          <h2 id="chartTitle" style="margin:0">Drop rate over time</h2>
+          <span style="flex:1"></span>
+          <label>Measure <select id="cMetric">
+            <option value="rate">Drop rate (drops ÷ runs)</option>
+            <option value="sess">Sessions with a drop</option>
+          </select></label>
+          <label>Moving average over <input type="number" id="cWin" min="1" step="1" style="width:70px">
+            <select id="cUnit"><option value="sessions">sessions</option><option value="runs">runs</option><option value="days">days</option></select></label>
+        </div>
+        <div class="legend" id="chartLegend"></div>
+        <div id="chartBox"><svg id="chart" role="img"></svg><div id="tip" class="hidden"></div></div>
+        <p class="muted" id="chartNote" style="margin:8px 0 0"></p>
+        <details id="chartData"><summary>Show chart data</summary><div class="table-wrap" style="margin-top:8px;max-height:360px;overflow:auto"><table><thead></thead><tbody></tbody></table></div></details>
+      </div>
+
+      <div class="table-wrap"><table id="dropTable"><thead></thead><tbody></tbody></table></div>
+      <p class="muted">Click an item to chart it. Drop rate = total amount ÷ total runs, so an item that drops one at a time shows its chance per run; stackable items can go over 100%. “Sessions with drop” is how many included sessions had the item at all, which helps with rare drops.</p>
+    </section>
+  </div>
+</main>
+
+<script src="item-catalog.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const LS_OVR = 'dune-drops:overrides', LS_CHART = 'dune-drops:chart', LS_ITEMS = 'dune-drops:excludedItems';
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = (n, d = 0) => n == null || isNaN(n) ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+  const fmtRate = n => n >= 100 ? fmt(n, 0) : n >= 10 ? fmt(n, 1) : fmt(n, 2);
+  const fmtPct = n => n == null || isNaN(n) ? '—' : n === 0 ? '0%' : (n >= 100 ? fmt(n, 0) : n >= 10 ? fmt(n, 1) : fmt(n, 2)) + '%';
+  const fmtDate = ms => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtDay = ms => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+  let sources = [];            // { key, label, fileName, exportedAt, raw: [...sessions], used }
+  let sessions = [];
+  // Sessions the user unticked; every other single dungeon/level session is included.
+  let overrides = Object.fromEntries(Object.entries(store.get(LS_OVR, {})).filter(([, v]) => v === false));
+  let chartOpts = Object.assign({ metric: 'rate', win: 10, unit: 'sessions' }, store.get(LS_CHART, {}));
+  let sessSort = { key: 'start', dir: -1 }, dropSort = { key: 'perRun', dir: -1 };
+  let expanded = new Set(), selectedItem = null;
+  let excludedItems = new Set(store.get(LS_ITEMS, []));   // item ids left out of the drop rates
+  let itemIndex = new Map();                                // id -> { id, name, cur, bp, sessions, total }
+  const srcLabel = key => sources.find(s => s.key === key)?.label ?? '?';
+  const isBlueprint = id => id.endsWith('_schematic');
+  const bpPill = id => isBlueprint(id) ? ' <span class="pill bp">blueprint</span>' : '';
+
+  // Fixed sections from item-catalog.js, keyed by normalized name.
+  const normName = n => n.replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+  const CATALOG = window.ITEM_CATALOG || {};
+  const SECTIONS = [
+    { key: 'augments', title: 'Augments', groups: [{ title: null, names: CATALOG.augments || [] }] },
+    { key: 'blueprints', title: 'Blueprints', groups: [
+      { title: 'Weapons', names: CATALOG.weaponBlueprints || [] },
+      { title: 'Armor', names: CATALOG.armorBlueprints || [] },
+      { title: 'Accessories', names: CATALOG.accessoryBlueprints || [] }] },
+    { key: 'other', title: 'Other', groups: [{ title: null, names: null }] }
+  ];
+  const catalogNames = new Set(SECTIONS.flatMap(s => s.groups.flatMap(g => (g.names || []).map(normName))));
+  // Only blueprint drops of listed names belong to Augments/Blueprints; the crafted items go to Other.
+  const inCatalog = it => isBlueprint(it.id) && catalogNames.has(normName(it.name));
+
+  // ---------- export storage (IndexedDB, so several large exports survive reloads) ----------
+  const idb = {
+    db: null,
+    open() {
+      return new Promise(res => {
+        try {
+          const r = indexedDB.open('dune-drops', 1);
+          r.onupgradeneeded = () => r.result.createObjectStore('exports', { keyPath: 'key' });
+          r.onsuccess = () => { this.db = r.result; res(true); };
+          r.onerror = () => res(false);
+        } catch { res(false); }
+      });
+    },
+    tx(mode, fn) {
+      return new Promise(res => {
+        if (!this.db) return res(null);
+        try {
+          const t = this.db.transaction('exports', mode), req = fn(t.objectStore('exports'));
+          t.oncomplete = () => res(req?.result ?? true); t.onerror = () => res(null);
+        } catch { res(null); }
+      });
+    },
+    all() { return this.tx('readonly', s => s.getAll()); },
+    put(v) { return this.tx('readwrite', s => s.put(v)); },
+    del(k) { return this.tx('readwrite', s => s.delete(k)); }
+  };
+
+  // ---------- loading ----------
+  function parseExport(text, fileName) {
+    let d;
+    try { d = JSON.parse(text); } catch { alert(`${fileName} is not valid JSON.`); return null; }
+    const raw = d?.data?.sessions;
+    if (!Array.isArray(raw)) { alert(`${fileName}: no data.sessions array found. Is this a Dune sessions export?`); return null; }
+    const names = new Map();
+    for (const s of raw) if (s.characterName) names.set(s.characterName, (names.get(s.characterName) || 0) + 1);
+    const top = [...names].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return { exportedAt: d.exportedAt ? Date.parse(d.exportedAt) : 0, raw, defaultLabel: top || fileName.replace(/\.json$/i, '') };
+  }
+
+  async function addFiles(files) {
+    for (const f of files) {
+      const text = await f.text();
+      const p = parseExport(text, f.name);
+      if (!p) continue;
+      const key = `${f.name}|${p.exportedAt}`;
+      const existing = sources.find(s => s.key === key);
+      const label = existing?.label ?? p.defaultLabel;
+      sources = sources.filter(s => s.key !== key);
+      sources.push({ key, label, fileName: f.name, exportedAt: p.exportedAt, raw: p.raw });
+      await idb.put({ key, label, fileName: f.name, exportedAt: p.exportedAt, text });
+    }
+    rebuild();
+  }
+
+  function rebuild() {
+    const byId = new Map();
+    for (const src of [...sources].sort((a, b) => a.exportedAt - b.exportedAt)) {
+      src.used = 0;
+      for (const s of src.raw) byId.set(s.sessionId, normalize(s, src.key));
+    }
+    sessions = [...byId.values()];
+    for (const s of sessions) sources.find(x => x.key === s.source).used++;
+    itemIndex = new Map();
+    for (const s of sessions) for (const [id, e] of s.loot) {
+      const it = itemIndex.get(id) || { id, name: e.name, cur: e.cur, sessions: 0, total: 0 };
+      it.sessions++; it.total += e.amount; itemIndex.set(id, it);
+    }
+    const total = sources.reduce((a, s) => a + s.raw.length, 0);
+    $('#fileInfo').textContent = sources.length
+      ? `${sources.length} export${sources.length > 1 ? 's' : ''} · ${sessions.length} sessions` + (total > sessions.length ? ` (${total - sessions.length} duplicates skipped)` : '')
+      : 'No exports loaded';
+    $('#drop').classList.toggle('hidden', sources.length > 0);
+    $('#app').classList.toggle('hidden', sources.length === 0);
+    if (!sources.length) return;
+    initChartInputs();
+    renderSources();
+    fillSessionFilters();
+    renderSessions();
+    renderItems();
+    renderDrops();
+  }
+
+  function normalize(s, source) {
+    const runs = s.dungeonRuns || [];
+    const keys = new Set(runs.map(r => r.dungeonId + '|' + r.difficulty));
+    const first = runs[0];
+    const loot = new Map();
+    for (const x of s.loot || []) add(loot, x.id, x.name, x.amount, false);
+    for (const x of s.currencies || []) add(loot, 'cur:' + x.id, x.name, x.amount, true);
+    const runSec = runs.reduce((a, r) => a + (r.durationSeconds || 0), 0);
+    return {
+      id: s.sessionId, source, start: s.startedAtMs, end: s.endedAtMs || s.startedAtMs,
+      char: s.characterName || '(unknown)', title: s.title || '',
+      runs, runCount: runs.length, mixed: keys.size > 1,
+      dungeonId: keys.size === 1 ? first.dungeonId : null,
+      dungeonName: keys.size === 1 ? first.dungeonName : keys.size > 1 ? 'Mixed' : '',
+      level: keys.size === 1 ? first.difficulty : null,
+      runSec, active: s.activeSeconds || 0,
+      share: s.activeSeconds ? runSec / s.activeSeconds : 0,
+      carry: runs.some(r => r.startedBeforeSegment),
+      party: Math.max(0, ...runs.map(r => r.playerCount || 1)),
+      dailies: s.dailyCount ?? (s.dailies || []).length,
+      spec: (s.specializationXp || []).reduce((a, x) => a + x.amount, 0),
+      specNames: (s.specializationXp || []).map(x => x.name),
+      dist: (s.distanceMeters || 0) / 1000,
+      loot
+    };
+    function add(m, id, name, amt, cur) {
+      const e = m.get(id) || { name, amount: 0, cur };
+      e.amount += amt || 0; m.set(id, e);
+    }
+  }
+
+  // ---------- exports tab ----------
+  function renderSources() {
+    $('#srcTable tbody').innerHTML = sources.map(s => {
+      const chars = [...new Set(s.raw.map(x => x.characterName).filter(Boolean))].join(', ');
+      return `<tr data-key="${esc(s.key)}">
+        <td><input type="text" value="${esc(s.label)}" style="width:180px"></td>
+        <td>${esc(s.fileName)}</td><td>${s.exportedAt ? fmtDate(s.exportedAt) : '?'}</td>
+        <td class="num">${s.raw.length}</td><td class="num">${s.used}</td>
+        <td>${esc(chars)}</td><td><button data-remove>Remove</button></td></tr>`;
+    }).join('');
+  }
+  $('#srcTable tbody').addEventListener('change', async e => {
+    const tr = e.target.closest('tr'); if (!tr || !e.target.matches('input')) return;
+    const src = sources.find(s => s.key === tr.dataset.key);
+    src.label = e.target.value.trim() || src.fileName;
+    const all = await idb.all();
+    const rec = all?.find(r => r.key === src.key);
+    if (rec) await idb.put({ ...rec, label: src.label });
+    fillSessionFilters(); renderSessions(); renderDrops();
+  });
+  $('#srcTable tbody').addEventListener('click', async e => {
+    if (!e.target.matches('[data-remove]')) return;
+    const key = e.target.closest('tr').dataset.key;
+    if (!confirm(`Remove ${srcLabel(key)} from this page? Your session choices are kept.`)) return;
+    sources = sources.filter(s => s.key !== key);
+    await idb.del(key);
+    rebuild();
+  });
+
+  // ---------- inclusion ----------
+  function reasons(s) {
+    const r = [];
+    if (!s.runCount) r.push('No dungeon runs');
+    if (s.mixed) r.push('Mixed dungeons/levels');
+    return { r, eligible: r.length === 0 };
+  }
+  function status(s) {
+    const { r, eligible } = reasons(s);
+    if (!eligible) return { included: false, eligible, manual: false, r };
+    const o = overrides[s.id];
+    return { included: o ?? true, eligible, manual: o !== undefined, r };
+  }
+  function setOverride(ids, val) {
+    for (const id of ids) val === null || val === true ? delete overrides[id] : overrides[id] = val;
+    store.set(LS_OVR, overrides);
+    renderSessions(); renderDrops();
+  }
+
+  // ---------- sessions tab ----------
+  function options(sel, values, allLabel) {
+    const el = $(sel), prev = el.value;
+    el.innerHTML = (allLabel ? `<option value="">${esc(allLabel)}</option>` : '') + values.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
+    if ([...el.options].some(o => o.value === prev)) el.value = prev;
+  }
+  const sourceList = () => sources.map(s => [s.key, s.label]);
+  function dungeonList(list) {
+    const m = new Map();
+    for (const s of list) if (s.dungeonId) m.set(s.dungeonId, s.dungeonName);
+    return [...m].sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
+  }
+  function levelList(list, dungeonId) {
+    return [...new Set(list.filter(s => s.dungeonId && (!dungeonId || s.dungeonId === dungeonId)).map(s => s.level))].sort((a, b) => a - b).map(l => [String(l), 'Level ' + l]);
+  }
+  function fillSessionFilters() {
+    options('#fSource', sourceList(), 'All accounts');
+    options('#fDungeon', dungeonList(sessions), 'All dungeons');
+    options('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels');
+    options('#fChar', [...new Set(sessions.map(s => s.char))].sort().map(c => [c, c]), 'All characters');
+  }
+  $('#fDungeon').addEventListener('change', () => { options('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels'); renderSessions(); });
+  ['#fSource', '#fLevel', '#fChar', '#fStatus'].forEach(s => $(s).addEventListener('change', renderSessions));
+
+  function shownSessions() {
+    const src = $('#fSource').value, dg = $('#fDungeon').value, lv = $('#fLevel').value, ch = $('#fChar').value, st = $('#fStatus').value;
+    return sessions.filter(s => {
+      if (src && s.source !== src) return false;
+      if (dg && s.dungeonId !== dg) return false;
+      if (lv && String(s.level) !== lv) return false;
+      if (ch && s.char !== ch) return false;
+      const t = status(s);
+      if (st === 'eligible') return t.eligible;
+      if (st === 'included') return t.included;
+      if (st === 'excluded') return t.eligible && !t.included;
+      if (st === 'manual') return t.manual;
+      return true;
+    });
+  }
+
+  const SESS_COLS = [
+    { key: 'inc', label: 'Use', get: s => status(s).included ? 1 : 0 },
+    { key: 'start', label: 'Started', get: s => s.start },
+    { key: 'source', label: 'Account', get: s => srcLabel(s.source) },
+    { key: 'char', label: 'Character', get: s => s.char },
+    { key: 'dungeonName', label: 'Dungeon', get: s => s.dungeonName },
+    { key: 'level', label: 'Lvl', num: true, get: s => s.level ?? -1 },
+    { key: 'runCount', label: 'Runs', num: true, get: s => s.runCount },
+    { key: 'share', label: 'Dungeon time', num: true, get: s => s.share },
+    { key: 'active', label: 'Active', num: true, get: s => s.active },
+    { key: 'dailies', label: 'Dailies', num: true, get: s => s.dailies },
+    { key: 'spec', label: 'Spec XP', num: true, get: s => s.spec },
+    { key: 'dist', label: 'Km', num: true, get: s => s.dist },
+    { key: 'party', label: 'Party', num: true, get: s => s.party },
+    { key: 'items', label: 'Item types', num: true, get: s => s.loot.size },
+    { key: 'title', label: 'Title', get: s => s.title },
+    { key: 'why', label: 'Notes', get: s => status(s).r.join(', ') }
+  ];
+
+  function sortBy(list, cols, sort) {
+    const c = cols.find(c => c.key === sort.key);
+    return list.sort((a, b) => {
+      const x = c.get(a), y = c.get(b);
+      return (typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y) * sort.dir;
+    });
+  }
+  function head(table, cols, sort, onSort) {
+    const thead = $(table + ' thead');
+    thead.innerHTML = '<tr>' + cols.map(c => `<th data-k="${c.key}" class="${c.num ? 'num' : ''}">${esc(c.label)}${sort.key === c.key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+    thead.onclick = e => {
+      const k = e.target.closest('th')?.dataset.k; if (!k) return;
+      if (sort.key === k) sort.dir *= -1; else { sort.key = k; sort.dir = cols.find(c => c.key === k).num ? -1 : 1; }
+      onSort();
+    };
+  }
+
+  function renderSessions() {
+    if (!sessions.length) return;
+    const list = sortBy(shownSessions(), SESS_COLS, sessSort);
+    head('#sessTable', SESS_COLS, sessSort, renderSessions);
+    const inc = sessions.filter(s => status(s).included);
+    const groups = new Set(inc.map(s => s.dungeonId + '|' + s.level));
+    $('#sessStats').innerHTML = [
+      ['Shown', list.length], ['Included', inc.length], ['Included runs', inc.reduce((a, s) => a + s.runCount, 0)],
+      ['Dungeon/level groups', groups.size], ['Excluded by you', sessions.filter(s => status(s).manual).length]
+    ].map(([l, v]) => `<div class="stat"><span class="muted">${l}</span><b>${fmt(v)}</b></div>`).join('');
+    const rows = [];
+    for (const s of list) {
+      const t = status(s);
+      const notes = !t.eligible ? t.r.map(x => `<span class="pill bad">${esc(x)}</span>`).join('')
+        : t.included ? '<span class="pill ok">included</span>' : '<span class="pill manual">excluded</span>';
+      rows.push(`<tr data-id="${esc(s.id)}" class="${t.eligible ? '' : 'ineligible'}">
+        <td><input type="checkbox" ${t.included ? 'checked' : ''} ${t.eligible ? '' : 'disabled'}></td>
+        <td>${fmtDate(s.start)}</td><td>${esc(srcLabel(s.source))}</td><td>${esc(s.char)}</td><td>${esc(s.dungeonName)}</td>
+        <td class="num">${s.level ?? ''}</td><td class="num">${s.runCount}</td>
+        <td class="num">${s.runCount ? fmt(s.share * 100) + '%' : ''}</td>
+        <td class="num">${fmt(s.active / 60)}m</td><td class="num">${s.dailies || ''}</td>
+        <td class="num">${s.spec ? fmt(s.spec) : ''}</td><td class="num">${fmt(s.dist, 1)}</td>
+        <td class="num">${s.party || ''}</td><td class="num">${s.loot.size}</td>
+        <td>${esc(s.title)}</td><td>${notes}</td></tr>`);
+      if (expanded.has(s.id)) {
+        const items = [...s.loot.values()].sort((a, b) => b.amount - a.amount);
+        rows.push(`<tr class="detail"><td colspan="${SESS_COLS.length}"><div class="loot-list">${items.map(i => `<div>${fmt(i.amount)} × ${esc(i.name)}</div>`).join('') || '<span class="muted">No loot recorded</span>'}</div></td></tr>`);
+      }
+    }
+    $('#sessTable tbody').innerHTML = rows.join('');
+  }
+  $('#sessTable tbody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-id]'); if (!tr) return;
+    const id = tr.dataset.id;
+    if (e.target.matches('input[type=checkbox]')) { setOverride([id], e.target.checked); return; }
+    expanded.has(id) ? expanded.delete(id) : expanded.add(id);
+    renderSessions();
+  });
+  $('#incAll').onclick = () => setOverride(shownSessions().filter(s => status(s).eligible).map(s => s.id), true);
+  $('#excAll').onclick = () => setOverride(shownSessions().filter(s => status(s).eligible).map(s => s.id), false);
+
+  // ---------- items tab ----------
+  // Each group's rows, alphabetical: listed names map to their observed blueprint, or a placeholder
+  // if that blueprint hasn't dropped yet. Other holds everything else.
+  function sectionRows(section) {
+    const byName = new Map();
+    for (const it of itemIndex.values()) if (inCatalog(it)) byName.set(normName(it.name), it);
+    const alpha = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
+      || isBlueprint(b.id) - isBlueprint(a.id);
+    return section.groups.map(g => {
+      const rows = g.names
+        ? [...new Map(g.names.map(n => [normName(n), byName.get(normName(n)) || { id: null, name: n }])).values()]
+        : [...itemIndex.values()].filter(it => !inCatalog(it));
+      return { title: g.title, rows: rows.sort(alpha) };
+    });
+  }
+
+  function renderItems() {
+    const q = $('#iSearch').value.trim().toLowerCase();
+    $('#itemSections').innerHTML = SECTIONS.map(sec => {
+      const groups = sectionRows(sec);
+      const ids = groups.flatMap(g => g.rows.filter(r => r.id).map(r => r.id));
+      const inc = ids.filter(id => !excludedItems.has(id)).length;
+      const tables = groups.map(g => {
+        const rows = g.rows.filter(r => !q || r.name.toLowerCase().includes(q));
+        if (!rows.length) return '';
+        return `${g.title ? `<h3>${esc(g.title)}</h3>` : ''}<div class="table-wrap"><table>
+          <thead><tr><th>Use</th><th>Item</th><th class="num">Seen in sessions</th><th class="num">Total</th></tr></thead><tbody>
+          ${rows.map(r => r.id ? `<tr data-item="${esc(r.id)}">
+              <td><input type="checkbox" ${excludedItems.has(r.id) ? '' : 'checked'}></td>
+              <td>${esc(r.name)}${bpPill(r.id)}${r.cur ? ' <span class="pill ok">currency</span>' : ''}</td>
+              <td class="num">${fmt(r.sessions)}</td><td class="num">${fmt(r.total)}</td></tr>`
+            : `<tr class="ineligible"><td><input type="checkbox" disabled></td><td>${esc(r.name)}</td><td class="num" colspan="2">not seen yet</td></tr>`).join('')}
+          </tbody></table></div>`;
+      }).join('');
+      return `<div class="panel item-section" data-section="${sec.key}">
+        <h2>${esc(sec.title)} <span class="muted" style="font-weight:normal">${inc} of ${ids.length} included</span>
+          <span style="flex:1"></span><button data-all="1">Include all</button><button data-all="0">Exclude all</button></h2>
+        ${tables || '<p class="muted">No items match.</p>'}</div>`;
+    }).join('');
+  }
+  function setItems(ids, include) {
+    for (const id of ids) include ? excludedItems.delete(id) : excludedItems.add(id);
+    store.set(LS_ITEMS, [...excludedItems]);
+    renderItems(); renderDrops();
+  }
+  $('#iSearch').addEventListener('input', renderItems);
+  $('#itemSections').addEventListener('click', e => {
+    if (e.target.matches('input[type=checkbox]')) {
+      setItems([e.target.closest('tr').dataset.item], e.target.checked);
+    } else if (e.target.matches('button[data-all]')) {
+      const sec = SECTIONS.find(s => s.key === e.target.closest('[data-section]').dataset.section);
+      setItems(sectionRows(sec).flatMap(g => g.rows.filter(r => r.id).map(r => r.id)), e.target.dataset.all === '1');
+    }
+  });
+
+  // ---------- drops tab ----------
+  function included() {
+    const src = $('#dSource').value;
+    return sessions.filter(s => (!src || s.source === src) && status(s).included);
+  }
+  $('#dDungeon').addEventListener('change', () => { $('#dLevel').value = ''; renderDrops(); });
+  ['#dSource', '#dLevel', '#dSearch', '#dCurrencies'].forEach(s => $(s).addEventListener('input', renderDrops));
+
+  function aggregate(list) {
+    const items = new Map(); let runs = 0;
+    for (const s of list) {
+      runs += s.runCount;
+      for (const [id, e] of s.loot) {
+        const a = items.get(id) || { id, name: e.name, cur: e.cur, total: 0, sessions: 0 };
+        a.total += e.amount; a.sessions++;
+        items.set(id, a);
+      }
+    }
+    for (const a of items.values()) a.perRun = a.total / runs;
+    return { items, runs, sessions: list.length };
+  }
+  function itemFilter(a) {
+    if (excludedItems.has(a.id)) return false;
+    const q = $('#dSearch').value.trim().toLowerCase();
+    if (q && !a.name.toLowerCase().includes(q)) return false;
+    if (!$('#dCurrencies').checked && a.cur) return false;
+    return true;
+  }
+
+  function renderDrops() {
+    if (!sessions.length) return;
+    options('#dSource', sourceList(), 'All accounts');
+    const inc = included();
+    options('#dDungeon', dungeonList(inc), null);
+    options('#dLevel', [['', 'Compare all levels'], ...levelList(inc, $('#dDungeon').value)], null);
+
+    const dg = $('#dDungeon').value, lv = $('#dLevel').value;
+    const pool = inc.filter(s => s.dungeonId === dg);
+    if (!dg) {
+      $('#dropStats').innerHTML = '';
+      $('#chartPanel').classList.add('hidden');
+      $('#dropTable thead').innerHTML = '';
+      $('#dropTable tbody').innerHTML = '<tr><td class="muted">No included sessions yet. Pick some on the Sessions tab.</td></tr>';
+      return;
+    }
+    if (lv) renderLevel(pool.filter(s => String(s.level) === lv));
+    else renderCompare(pool);
+    renderChart();
+  }
+
+  function renderLevel(list) {
+    const ag = aggregate(list);
+    const hours = Math.max(list.reduce((a, s) => a + s.active, 0) / 3600, 1e-9);
+    $('#dropStats').innerHTML = [['Sessions', ag.sessions], ['Runs', ag.runs], ['Item types', ag.items.size],
+      ['Avg run', list.length ? fmt(list.reduce((a, s) => a + s.runSec, 0) / ag.runs / 60, 1) + 'm' : '—']]
+      .map(([l, v]) => `<div class="stat"><span class="muted">${l}</span><b>${typeof v === 'number' ? fmt(v) : v}</b></div>`).join('');
+    const cols = [
+      { key: 'name', label: 'Item', get: a => a.name },
+      { key: 'perRun', label: 'Drop rate', num: true, get: a => a.perRun },
+      { key: 'runsPer', label: 'Runs per 1', num: true, get: a => a.perRun ? 1 / a.perRun : Infinity },
+      { key: 'total', label: 'Total', num: true, get: a => a.total },
+      { key: 'sessions', label: 'Sessions with drop', num: true, get: a => a.sessions },
+      { key: 'perHr', label: 'Per active hr', num: true, get: a => a.total / hours }
+    ];
+    if (!cols.some(c => c.key === dropSort.key)) dropSort = { key: 'perRun', dir: -1 };
+    head('#dropTable', cols, dropSort, renderDrops);
+    const rows = sortBy([...ag.items.values()].filter(itemFilter), cols, dropSort);
+    if (!rows.some(a => a.id === selectedItem)) selectedItem = rows[0]?.id ?? null;
+    const max = Math.max(...rows.map(a => a.perRun), 1e-9);
+    $('#dropTable tbody').innerHTML = rows.map(a => `<tr data-item="${esc(a.id)}" class="${a.id === selectedItem ? 'selected' : ''}">
+      <td>${esc(a.name)}${bpPill(a.id)} ${a.cur ? '<span class="pill ok">currency</span>' : ''}</td>
+      <td class="num bar" style="--w:${(a.perRun / max * 100).toFixed(1)}%"><span>${fmtPct(a.perRun * 100)}</span></td>
+      <td class="num">${a.perRun >= 1 ? '' : fmtRate(1 / a.perRun)}</td>
+      <td class="num">${fmt(a.total)}</td>
+      <td class="num">${a.sessions} / ${ag.sessions} (${fmt(a.sessions / ag.sessions * 100)}%)</td>
+      <td class="num">${fmtRate(a.total / hours)}</td></tr>`).join('') || '<tr><td class="muted">No items match.</td></tr>';
+  }
+
+  function renderCompare(list) {
+    const levels = [...new Set(list.map(s => s.level))].sort((a, b) => a - b);
+    const per = new Map(levels.map(l => [l, aggregate(list.filter(s => s.level === l))]));
+    const all = new Map();
+    for (const [l, ag] of per) for (const a of ag.items.values()) {
+      const e = all.get(a.id) || { id: a.id, name: a.name, cur: a.cur, by: {} };
+      e.by[l] = a; all.set(a.id, e);
+    }
+    $('#dropStats').innerHTML = levels.map(l => `<div class="stat"><span class="muted">Level ${l}</span><b>${fmt(per.get(l).runs)} runs</b><span class="muted">${per.get(l).sessions} sessions</span></div>`).join('');
+    const cols = [{ key: 'name', label: 'Item', get: a => a.name },
+      ...levels.map(l => ({ key: 'L' + l, label: `Lvl ${l} drop rate`, num: true, get: a => a.by[l]?.perRun ?? 0 }))];
+    if (!cols.some(c => c.key === dropSort.key)) dropSort = { key: cols[cols.length - 1].key, dir: -1 };
+    head('#dropTable', cols, dropSort, renderDrops);
+    const rows = sortBy([...all.values()].filter(itemFilter), cols, dropSort);
+    if (!rows.some(a => a.id === selectedItem)) selectedItem = rows[0]?.id ?? null;
+    $('#dropTable tbody').innerHTML = rows.map(a => `<tr data-item="${esc(a.id)}" class="${a.id === selectedItem ? 'selected' : ''}">
+      <td>${esc(a.name)}${bpPill(a.id)} ${a.cur ? '<span class="pill ok">currency</span>' : ''}</td>
+      ${levels.map(l => { const x = a.by[l]; return `<td class="num" title="${x ? `${fmt(x.total)} total · ${x.sessions}/${per.get(l).sessions} sessions` : 'not seen'}">${x ? fmtPct(x.perRun * 100) : '<span class="muted">—</span>'}</td>`; }).join('')}
+    </tr>`).join('') || '<tr><td class="muted">No items match.</td></tr>';
+  }
+  $('#dropTable tbody').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-item]'); if (!tr) return;
+    selectedItem = tr.dataset.item;
+    document.querySelectorAll('#dropTable tbody tr').forEach(r => r.classList.toggle('selected', r === tr));
+    renderChart();
+  });
+
+  // ---------- chart: cumulative + moving average over time ----------
+  function initChartInputs() {
+    $('#cMetric').value = chartOpts.metric; $('#cWin').value = chartOpts.win; $('#cUnit').value = chartOpts.unit;
+  }
+  ['#cMetric', '#cWin', '#cUnit'].forEach(s => $(s).addEventListener('input', () => {
+    chartOpts = { metric: $('#cMetric').value, win: Math.max(1, +$('#cWin').value || 1), unit: $('#cUnit').value };
+    store.set(LS_CHART, chartOpts);
+    renderChart();
+  }));
+  window.addEventListener('resize', () => { if (!$('#tab-drops').classList.contains('hidden')) renderChart(); });
+
+  // One point per included session, in time order across every loaded account.
+  function series() {
+    const dg = $('#dDungeon').value, lv = $('#dLevel').value;
+    const list = included().filter(s => s.dungeonId === dg && (!lv || String(s.level) === lv)).sort((a, b) => a.end - b.end);
+    const rate = chartOpts.metric === 'rate';
+    const val = s => rate ? (s.loot.get(selectedItem)?.amount || 0) : (s.loot.has(selectedItem) ? 1 : 0);
+    const den = s => rate ? s.runCount : 1;
+    const DAY = 864e5;
+    let cumN = 0, cumD = 0, lo = 0, winN = 0, winD = 0, winRuns = 0;
+    return list.map((s, i) => {
+      cumN += val(s); cumD += den(s);
+      winN += val(s); winD += den(s); winRuns += s.runCount;
+      // Drop the oldest sessions until the trailing window fits.
+      const tooBig = () => chartOpts.unit === 'sessions' ? i - lo + 1 > chartOpts.win
+        : chartOpts.unit === 'runs' ? winRuns - list[lo].runCount >= chartOpts.win
+        : s.end - list[lo].end > chartOpts.win * DAY;
+      while (lo < i && tooBig()) { winN -= val(list[lo]); winD -= den(list[lo]); winRuns -= list[lo].runCount; lo++; }
+      return { s, t: s.end, cum: cumN / cumD * 100, ma: winD ? winN / winD * 100 : null, own: val(s) / den(s) * 100, winSessions: i - lo + 1 };
+    });
+  }
+
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  }
+
+  function renderChart() {
+    const panel = $('#chartPanel'), svg = $('#chart');
+    if (!selectedItem || !$('#dDungeon').value) { panel.classList.add('hidden'); return; }
+    panel.classList.remove('hidden');
+    const pts = series();
+    const name = (itemIndex.get(selectedItem)?.name ?? selectedItem) + (isBlueprint(selectedItem) ? ' (blueprint)' : '');
+    const lv = $('#dLevel').value;
+    const where = `${$('#dDungeon').selectedOptions[0]?.text ?? ''}${lv ? ', level ' + lv : ', all levels'}`;
+    const metricLabel = chartOpts.metric === 'rate' ? 'drop rate' : 'sessions with a drop';
+    $('#chartTitle').textContent = `${name} · ${metricLabel} over time`;
+    const winLabel = `${chartOpts.win}-${chartOpts.unit.replace(/s$/, '')} moving average`;
+    $('#chartLegend').innerHTML = `<span><i style="background:var(--series-1)"></i>Cumulative (all data so far)</span><span><i style="background:var(--series-2)"></i>${esc(winLabel)}</span>`;
+    const accts = new Set(pts.map(p => p.s.source)).size;
+    $('#chartNote').textContent = `${where} · ${pts.length} sessions from ${accts} account${accts === 1 ? '' : 's'}, in the order they ended.` + (lv ? '' : ' Levels are mixed here; pick a level for a cleaner rate.');
+
+    const W = svg.clientWidth || 800, H = 320, m = { l: 56, r: 112, t: 14, b: 30 };
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    if (pts.length === 0) { svg.innerHTML = ''; return; }
+    const t0 = pts[0].t, t1 = pts[pts.length - 1].t === t0 ? t0 + 864e5 : pts[pts.length - 1].t;
+    const yMax = niceMax(Math.max(...pts.map(p => Math.max(p.cum, p.ma ?? 0))) * 1.05);
+    const x = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r);
+    const y = v => m.t + (1 - v / yMax) * (H - m.t - m.b);
+    const g = [];
+    for (let i = 0; i <= 4; i++) {
+      const v = yMax * i / 4;
+      g.push(`<line x1="${m.l}" x2="${W - m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(${i ? '--grid' : '--axis'})" stroke-width="1"/>`);
+      g.push(`<text x="${m.l - 8}" y="${y(v) + 4}" text-anchor="end">${fmtPct(v)}</text>`);
+    }
+    const ticks = Math.min(6, Math.max(2, Math.floor((W - m.l - m.r) / 110)));
+    for (let i = 0; i <= ticks; i++) {
+      const t = t0 + (t1 - t0) * i / ticks;
+      g.push(`<text x="${x(t)}" y="${H - 8}" text-anchor="middle">${fmtDay(t)}</text>`);
+    }
+    const path = key => pts.filter(p => p[key] != null).map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p[key]).toFixed(1)}`).join('');
+    g.push(`<path d="${path('ma')}" fill="none" stroke="var(--series-2)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+    g.push(`<path d="${path('cum')}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`);
+    // Direct labels at the line ends, nudged apart if they'd overlap.
+    const last = pts[pts.length - 1];
+    let yc = y(last.cum), ym = y(last.ma ?? 0);
+    if (Math.abs(yc - ym) < 14) { const mid = (yc + ym) / 2, up = yc <= ym ? -7 : 7; yc = mid + up; ym = mid - up; }
+    g.push(`<text class="end-label" x="${W - m.r + 8}" y="${yc + 4}">${fmtPct(last.cum)} total</text>`);
+    if (last.ma != null) g.push(`<text class="end-label" x="${W - m.r + 8}" y="${ym + 4}">${fmtPct(last.ma)} recent</text>`);
+    g.push(`<g id="hover" visibility="hidden"><line id="hx" y1="${m.t}" y2="${H - m.b}" stroke="var(--axis)" stroke-width="1"/>
+      <circle id="hc" r="4" fill="var(--series-1)" stroke="var(--chart-surface)" stroke-width="2"/>
+      <circle id="hm" r="4" fill="var(--series-2)" stroke="var(--chart-surface)" stroke-width="2"/></g>`);
+    g.push(`<rect id="hit" x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="transparent"/>`);
+    svg.innerHTML = g.join('');
+    svg.setAttribute('aria-label', `${name} ${metricLabel}: cumulative ${fmtPct(last.cum)}, ${winLabel} ${fmtPct(last.ma)}`);
+
+    const tip = $('#tip'), box = $('#chartBox');
+    const hit = svg.querySelector('#hit'), hov = svg.querySelector('#hover');
+    hit.onmousemove = e => {
+      const r = svg.getBoundingClientRect(), mx = (e.clientX - r.left) * W / r.width;
+      let best = pts[0];
+      for (const p of pts) if (Math.abs(x(p.t) - mx) < Math.abs(x(best.t) - mx)) best = p;
+      hov.setAttribute('visibility', 'visible');
+      svg.querySelector('#hx').setAttribute('x1', x(best.t)); svg.querySelector('#hx').setAttribute('x2', x(best.t));
+      svg.querySelector('#hc').setAttribute('cx', x(best.t)); svg.querySelector('#hc').setAttribute('cy', y(best.cum));
+      svg.querySelector('#hm').setAttribute('cx', x(best.t)); svg.querySelector('#hm').setAttribute('cy', y(best.ma ?? 0));
+      tip.innerHTML = `<b>${fmtDate(best.t)}</b><br><span class="muted">${esc(srcLabel(best.s.source))} · ${esc(best.s.char)} · ${best.s.runCount} run${best.s.runCount === 1 ? '' : 's'}${lv ? '' : ' · level ' + best.s.level}</span><br>
+        <span class="k" style="background:var(--series-1)"></span>Cumulative ${fmtPct(best.cum)}<br>
+        <span class="k" style="background:var(--series-2)"></span>Moving avg ${fmtPct(best.ma)} <span class="muted">(${best.winSessions} sessions)</span><br>
+        <span class="muted">This session: ${fmtPct(best.own)}</span>`;
+      tip.classList.remove('hidden');
+      const px = x(best.t) / W * r.width, tw = tip.offsetWidth;
+      tip.style.left = (px + 14 + tw > r.width ? px - 14 - tw : px + 14) + 'px';
+      tip.style.top = '10px';
+    };
+    hit.onmouseleave = () => { hov.setAttribute('visibility', 'hidden'); tip.classList.add('hidden'); };
+
+    const dt = $('#chartData');
+    dt.querySelector('thead').innerHTML = '<tr><th>Session ended</th><th>Account</th><th>Character</th><th class="num">Level</th><th class="num">Runs</th><th class="num">This session</th><th class="num">Cumulative</th><th class="num">Moving avg</th></tr>';
+    dt.querySelector('tbody').innerHTML = pts.slice().reverse().map(p => `<tr><td>${fmtDate(p.t)}</td><td>${esc(srcLabel(p.s.source))}</td><td>${esc(p.s.char)}</td><td class="num">${p.s.level}</td><td class="num">${p.s.runCount}</td><td class="num">${fmtPct(p.own)}</td><td class="num">${fmtPct(p.cum)}</td><td class="num">${fmtPct(p.ma)}</td></tr>`).join('');
+  }
+
+  // ---------- tabs, files ----------
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+    document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
+    for (const t of ['exports', 'sessions', 'items', 'drops']) $('#tab-' + t).classList.toggle('hidden', b.dataset.tab !== t);
+    if (b.dataset.tab === 'drops') renderDrops();
+  });
+  $('#openBtn').onclick = () => $('#fileInput').click();
+  $('#fileInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+  document.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+    const files = [...e.dataTransfer.files].filter(f => /\.json$/i.test(f.name) || f.type.includes('json'));
+    if (files.length) addFiles(files);
+  });
+
+  $('#exportSel').onclick = () => {
+    const blob = new Blob([JSON.stringify({ format: 'dune-drops.selections', version: 3, overrides, excludedItems: [...excludedItems] }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'dune-drop-selections.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('#importBtn').onclick = () => $('#importInput').click();
+  $('#importInput').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (d.format !== 'dune-drops.selections') throw 0;
+      // Merge, so selections saved from several people's pages can be combined.
+      // Only exclusions matter now; older files may also hold explicit includes.
+      for (const [id, v] of Object.entries(d.overrides || {})) if (v === false) overrides[id] = false;
+      for (const id of d.excludedItems || []) excludedItems.add(id);
+      store.set(LS_OVR, overrides); store.set(LS_ITEMS, [...excludedItems]);
+      if (sessions.length) { renderSessions(); renderItems(); renderDrops(); }
+    } catch { alert('That is not a selections file saved from this page.'); }
+  };
+
+  // Restore exports added in earlier visits.
+  (async () => {
+    const ok = await idb.open();
+    $('#storeNote').textContent = ok ? 'Exports are remembered in this browser until you remove them.' : 'This browser blocked local storage, so exports must be added again after reloading.';
+    const saved = ok ? await idb.all() : null;
+    if (!saved?.length) return;
+    for (const r of saved) {
+      const p = parseExport(r.text, r.fileName);
+      if (p) sources.push({ key: r.key, label: r.label, fileName: r.fileName, exportedAt: r.exportedAt, raw: p.raw });
+    }
+    rebuild();
+  })();
+})();
+</script>
+</body>
+</html>
