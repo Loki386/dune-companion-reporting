@@ -128,9 +128,10 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
         <label>Level <select id="fLevel"></select></label>
         <label>Character <select id="fChar"></select></label>
         <label>Show <select id="fStatus">
-          <option value="eligible">Single dungeon/level</option>
+          <option value="runs">With dungeon runs</option>
           <option value="included">Included</option>
           <option value="excluded">Excluded</option>
+          <option value="mixed">Mixed dungeons/levels</option>
           <option value="all">All sessions</option>
         </select></label>
         <span style="flex:1"></span>
@@ -321,7 +322,11 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
       char: s.characterName || '(unknown)', title: s.title || '',
       runs, runCount: runs.length, mixed: keys.size > 1,
       dungeonId: keys.size === 1 ? first.dungeonId : null,
-      dungeonName: keys.size === 1 ? first.dungeonName : keys.size > 1 ? 'Mixed' : '',
+      // A mixed session lists each dungeon/level it ran, with run counts.
+      dungeonName: keys.size === 1 ? first.dungeonName : keys.size > 1
+        ? [...runs.reduce((m, r) => m.set(`${r.dungeonName} · L${r.difficulty}`, (m.get(`${r.dungeonName} · L${r.difficulty}`) || 0) + 1), new Map())]
+          .map(([k, n]) => `${k} ×${n}`).join(', ')
+        : '',
       level: keys.size === 1 ? first.difficulty : null,
       runSec, active: s.activeSeconds || 0,
       share: s.activeSeconds ? runSec / s.activeSeconds : 0,
@@ -394,13 +399,16 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     if ([...el.options].some(o => o.value === prev)) el.value = prev;
   }
   const sourceList = () => sources.map(s => [s.key, s.label]);
+  // Built from runs, so mixed sessions contribute every dungeon and level they touched.
   function dungeonList(list) {
     const m = new Map();
-    for (const s of list) if (s.dungeonId) m.set(s.dungeonId, s.dungeonName);
+    for (const s of list) for (const r of s.runs) m.set(r.dungeonId, r.dungeonName);
     return [...m].sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true }));
   }
   function levelList(list, dungeonId) {
-    return [...new Set(list.filter(s => s.dungeonId && (!dungeonId || s.dungeonId === dungeonId)).map(s => s.level))].sort((a, b) => a - b).map(l => [String(l), 'Level ' + l]);
+    const lv = new Set();
+    for (const s of list) for (const r of s.runs) if (!dungeonId || r.dungeonId === dungeonId) lv.add(r.difficulty);
+    return [...lv].sort((a, b) => a - b).map(l => [String(l), 'Level ' + l]);
   }
   function fillSessionFilters() {
     options('#fSource', sourceList(), 'All accounts');
@@ -415,25 +423,25 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     const src = $('#fSource').value, dg = $('#fDungeon').value, lv = $('#fLevel').value, ch = $('#fChar').value, st = $('#fStatus').value;
     return sessions.filter(s => {
       if (src && s.source !== src) return false;
-      if (dg && s.dungeonId !== dg) return false;
-      if (lv && String(s.level) !== lv) return false;
+      if ((dg || lv) && !s.runs.some(r => (!dg || r.dungeonId === dg) && (!lv || String(r.difficulty) === lv))) return false;
       if (ch && s.char !== ch) return false;
       const t = status(s);
-      if (st === 'eligible') return t.eligible;
+      if (st === 'runs') return s.runCount > 0;
       if (st === 'included') return t.included;
-      if (st === 'excluded') return t.eligible && !t.included;
-      if (st === 'manual') return t.manual;
+      if (st === 'excluded') return s.runCount > 0 && !t.included;
+      if (st === 'mixed') return s.mixed;
       return true;
     });
   }
 
+  // Same "Dungeon · L40" form a mixed session uses for each of its parts.
+  const dungeonLabel = s => s.mixed || !s.runCount ? s.dungeonName : `${s.dungeonName} · L${s.level}`;
   const SESS_COLS = [
     { key: 'inc', label: 'Use', get: s => status(s).included ? 1 : 0 },
     { key: 'start', label: 'Started', get: s => s.start },
     { key: 'source', label: 'Account', get: s => srcLabel(s.source) },
     { key: 'char', label: 'Character', get: s => s.char },
-    { key: 'dungeonName', label: 'Dungeon', get: s => s.dungeonName },
-    { key: 'level', label: 'Lvl', num: true, get: s => s.level ?? -1 },
+    { key: 'dungeonName', label: 'Dungeon', get: s => dungeonLabel(s) },
     { key: 'runCount', label: 'Runs', num: true, get: s => s.runCount },
     { key: 'share', label: 'Dungeon time', num: true, get: s => s.share },
     { key: 'active', label: 'Active', num: true, get: s => s.active },
@@ -480,8 +488,8 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
         : t.included ? '<span class="pill ok">included</span>' : '<span class="pill manual">excluded</span>';
       rows.push(`<tr data-id="${esc(s.id)}" class="${t.eligible ? '' : 'ineligible'}">
         <td><input type="checkbox" ${t.included ? 'checked' : ''} ${t.eligible ? '' : 'disabled'}></td>
-        <td>${fmtDate(s.start)}</td><td>${esc(srcLabel(s.source))}</td><td>${esc(s.char)}</td><td>${esc(s.dungeonName)}</td>
-        <td class="num">${s.level ?? ''}</td><td class="num">${s.runCount}</td>
+        <td>${fmtDate(s.start)}</td><td>${esc(srcLabel(s.source))}</td><td>${esc(s.char)}</td><td>${esc(dungeonLabel(s))}</td>
+        <td class="num">${s.runCount}</td>
         <td class="num">${s.runCount ? fmt(s.share * 100) + '%' : ''}</td>
         <td class="num">${fmt(s.active / 60)}m</td><td class="num">${s.dailies || ''}</td>
         <td class="num">${s.spec ? fmt(s.spec) : ''}</td><td class="num">${fmt(s.dist, 1)}</td>
