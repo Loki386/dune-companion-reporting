@@ -54,6 +54,7 @@ th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 tbody tr:hover { background: var(--accent-soft); }
 tr.ineligible td { color: var(--muted); }
 tr.detail td { white-space: normal; background: var(--bg); }
+td.dgn { white-space: normal; min-width: 280px; max-width: 460px; }
 tr.selected td { background: var(--accent-soft); }
 #dropTable tbody tr[data-item] { cursor: pointer; }
 .pill { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; margin: 1px 2px 1px 0; }
@@ -70,7 +71,7 @@ tr.selected td { background: var(--accent-soft); }
 .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 120px; }
 .stat b { display: block; font-size: 20px; }
-.loot-list { columns: 3 220px; font-size: 13px; }
+.loot-list { columns: 3 220px; font-size: 13px; position: sticky; left: 12px; max-width: calc(100vw - 80px); }
 .hidden { display: none !important; }
 
 #chartPanel .legend { display: flex; gap: 16px; font-size: 13px; color: var(--muted); margin: 4px 0 8px; }
@@ -156,7 +157,6 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
         <label>Dungeon <select id="dDungeon"></select></label>
         <label>Level <select id="dLevel"></select></label>
         <label><input type="search" id="dSearch" placeholder="Filter items…"></label>
-        <label><input type="checkbox" id="dCurrencies" checked> Include currencies</label>
       </div>
       <div class="stats" id="dropStats"></div>
 
@@ -324,18 +324,15 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
       dungeonId: keys.size === 1 ? first.dungeonId : null,
       // A mixed session lists each dungeon/level it ran, with run counts.
       dungeonName: keys.size === 1 ? first.dungeonName : keys.size > 1
-        ? [...runs.reduce((m, r) => m.set(`${r.dungeonName} · L${r.difficulty}`, (m.get(`${r.dungeonName} · L${r.difficulty}`) || 0) + 1), new Map())]
-          .map(([k, n]) => `${k} ×${n}`).join(', ')
+        ? [...runs.reduce((m, r) => {
+            const lv = m.get(r.dungeonName) || new Map();
+            return m.set(r.dungeonName, lv.set(r.difficulty, (lv.get(r.difficulty) || 0) + 1));
+          }, new Map())]
+          .map(([name, lv]) => `${name} · ` + [...lv].sort((a, b) => a[0] - b[0]).map(([l, n]) => `L${l} ×${n}`).join(', ')).join(', ')
         : '',
       level: keys.size === 1 ? first.difficulty : null,
       runSec, active: s.activeSeconds || 0,
-      share: s.activeSeconds ? runSec / s.activeSeconds : 0,
       carry: runs.some(r => r.startedBeforeSegment),
-      party: Math.max(0, ...runs.map(r => r.playerCount || 1)),
-      dailies: s.dailyCount ?? (s.dailies || []).length,
-      spec: (s.specializationXp || []).reduce((a, x) => a + x.amount, 0),
-      specNames: (s.specializationXp || []).map(x => x.name),
-      dist: (s.distanceMeters || 0) / 1000,
       loot
     };
     function add(m, id, name, amt, cur) {
@@ -435,7 +432,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   }
 
   // Same "Dungeon · L40" form a mixed session uses for each of its parts.
-  const dungeonLabel = s => s.mixed || !s.runCount ? s.dungeonName : `${s.dungeonName} · L${s.level}`;
+  const dungeonLabel = s => s.mixed || !s.runCount ? s.dungeonName : `${s.dungeonName} · L${s.level} ×${s.runCount}`;
   const SESS_COLS = [
     { key: 'inc', label: 'Use', get: s => status(s).included ? 1 : 0 },
     { key: 'start', label: 'Started', get: s => s.start },
@@ -443,13 +440,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     { key: 'char', label: 'Character', get: s => s.char },
     { key: 'dungeonName', label: 'Dungeon', get: s => dungeonLabel(s) },
     { key: 'runCount', label: 'Runs', num: true, get: s => s.runCount },
-    { key: 'share', label: 'Dungeon time', num: true, get: s => s.share },
     { key: 'active', label: 'Active', num: true, get: s => s.active },
-    { key: 'dailies', label: 'Dailies', num: true, get: s => s.dailies },
-    { key: 'spec', label: 'Spec XP', num: true, get: s => s.spec },
-    { key: 'dist', label: 'Km', num: true, get: s => s.dist },
-    { key: 'party', label: 'Party', num: true, get: s => s.party },
-    { key: 'items', label: 'Item types', num: true, get: s => s.loot.size },
     { key: 'title', label: 'Title', get: s => s.title },
     { key: 'why', label: 'Notes', get: s => status(s).r.join(', ') }
   ];
@@ -488,15 +479,12 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
         : t.included ? '<span class="pill ok">included</span>' : '<span class="pill manual">excluded</span>';
       rows.push(`<tr data-id="${esc(s.id)}" class="${t.eligible ? '' : 'ineligible'}">
         <td><input type="checkbox" ${t.included ? 'checked' : ''} ${t.eligible ? '' : 'disabled'}></td>
-        <td>${fmtDate(s.start)}</td><td>${esc(srcLabel(s.source))}</td><td>${esc(s.char)}</td><td>${esc(dungeonLabel(s))}</td>
+        <td>${fmtDate(s.start)}</td><td>${esc(srcLabel(s.source))}</td><td>${esc(s.char)}</td><td class="dgn">${esc(dungeonLabel(s))}</td>
         <td class="num">${s.runCount}</td>
-        <td class="num">${s.runCount ? fmt(s.share * 100) + '%' : ''}</td>
-        <td class="num">${fmt(s.active / 60)}m</td><td class="num">${s.dailies || ''}</td>
-        <td class="num">${s.spec ? fmt(s.spec) : ''}</td><td class="num">${fmt(s.dist, 1)}</td>
-        <td class="num">${s.party || ''}</td><td class="num">${s.loot.size}</td>
+        <td class="num">${fmt(s.active / 60)}m</td>
         <td>${esc(s.title)}</td><td>${notes}</td></tr>`);
       if (expanded.has(s.id)) {
-        const items = [...s.loot.values()].sort((a, b) => b.amount - a.amount);
+        const items = [...s.loot.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
         rows.push(`<tr class="detail"><td colspan="${SESS_COLS.length}"><div class="loot-list">${items.map(i => `<div>${fmt(i.amount)} × ${esc(i.name)}</div>`).join('') || '<span class="muted">No loot recorded</span>'}</div></td></tr>`);
       }
     }
@@ -573,7 +561,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     return sessions.filter(s => (!src || s.source === src) && status(s).included);
   }
   $('#dDungeon').addEventListener('change', () => { $('#dLevel').value = ''; renderDrops(); });
-  ['#dSource', '#dLevel', '#dSearch', '#dCurrencies'].forEach(s => $(s).addEventListener('input', renderDrops));
+  ['#dSource', '#dLevel', '#dSearch'].forEach(s => $(s).addEventListener('input', renderDrops));
 
   function aggregate(list) {
     const items = new Map(); let runs = 0;
@@ -592,7 +580,6 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     if (excludedItems.has(a.id)) return false;
     const q = $('#dSearch').value.trim().toLowerCase();
     if (q && !a.name.toLowerCase().includes(q)) return false;
-    if (!$('#dCurrencies').checked && a.cur) return false;
     return true;
   }
 
@@ -629,7 +616,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
       { key: 'runsPer', label: 'Runs per 1', num: true, get: a => a.perRun ? 1 / a.perRun : Infinity },
       { key: 'total', label: 'Total', num: true, get: a => a.total },
       { key: 'sessions', label: 'Sessions with drop', num: true, get: a => a.sessions },
-      { key: 'perHr', label: 'Per active hr', num: true, get: a => a.total / hours }
+      { key: 'hrsPer', label: 'Active hrs per 1', num: true, get: a => a.total ? hours / a.total : Infinity }
     ];
     if (!cols.some(c => c.key === dropSort.key)) dropSort = { key: 'perRun', dir: -1 };
     head('#dropTable', cols, dropSort, renderDrops);
@@ -639,10 +626,10 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     $('#dropTable tbody').innerHTML = rows.map(a => `<tr data-item="${esc(a.id)}" class="${a.id === selectedItem ? 'selected' : ''}">
       <td>${esc(a.name)}${bpPill(a.id)} ${a.cur ? '<span class="pill ok">currency</span>' : ''}</td>
       <td class="num bar" style="--w:${(a.perRun / max * 100).toFixed(1)}%"><span>${fmtPct(a.perRun * 100)}</span></td>
-      <td class="num">${a.perRun >= 1 ? '' : fmtRate(1 / a.perRun)}</td>
+      <td class="num">${fmtRate(1 / a.perRun)}</td>
       <td class="num">${fmt(a.total)}</td>
       <td class="num">${a.sessions} / ${ag.sessions} (${fmt(a.sessions / ag.sessions * 100)}%)</td>
-      <td class="num">${fmtRate(a.total / hours)}</td></tr>`).join('') || '<tr><td class="muted">No items match.</td></tr>';
+      <td class="num">${fmtRate(hours / a.total)}</td></tr>`).join('') || '<tr><td class="muted">No items match.</td></tr>';
   }
 
   function renderCompare(list) {
@@ -781,8 +768,8 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     hit.onmouseleave = () => { hov.setAttribute('visibility', 'hidden'); tip.classList.add('hidden'); };
 
     const dt = $('#chartData');
-    dt.querySelector('thead').innerHTML = '<tr><th>Session ended</th><th>Account</th><th>Character</th><th class="num">Level</th><th class="num">Runs</th><th class="num">This session</th><th class="num">Cumulative</th><th class="num">Moving avg</th></tr>';
-    dt.querySelector('tbody').innerHTML = pts.slice().reverse().map(p => `<tr><td>${fmtDate(p.t)}</td><td>${esc(srcLabel(p.s.source))}</td><td>${esc(p.s.char)}</td><td class="num">${p.s.level}</td><td class="num">${p.s.runCount}</td><td class="num">${fmtPct(p.own)}</td><td class="num">${fmtPct(p.cum)}</td><td class="num">${fmtPct(p.ma)}</td></tr>`).join('');
+    dt.querySelector('thead').innerHTML = '<tr><th>Session ended</th><th>Account</th><th>Character</th><th class="num">Level</th><th class="num">Runs</th><th class="num">Drops</th><th class="num">This session</th><th class="num">Cumulative</th><th class="num">Moving avg</th></tr>';
+    dt.querySelector('tbody').innerHTML = pts.slice().reverse().map(p => `<tr><td>${fmtDate(p.t)}</td><td>${esc(srcLabel(p.s.source))}</td><td>${esc(p.s.char)}</td><td class="num">${p.s.level}</td><td class="num">${p.s.runCount}</td><td class="num">${fmt(p.s.loot.get(selectedItem)?.amount || 0)}</td><td class="num">${fmtPct(p.own)}</td><td class="num">${fmtPct(p.cum)}</td><td class="num">${fmtPct(p.ma)}</td></tr>`).join('');
   }
 
   // ---------- tabs, files ----------
