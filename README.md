@@ -3,7 +3,7 @@
 Browser tools for Dune exports:
 
 - **Drop rates:** item drop rates per dungeon and level, from session exports (`dune-sessions-*.json`).
-- **Permits:** crafting permits held per grade, from augments and blueprints exports.
+- **Permits:** crafting permits held per grade across your characters, from augments and uniques exports.
 
 Everything runs in your browser. There is no server, no build step and nothing to install, and your exports never leave your machine.
 
@@ -82,28 +82,48 @@ Click an item to chart it over time:
 
 ## Permits
 
-The **Permits** tab tracks how many crafting permits you hold for each augment and blueprint.
+The **Permits** tab tracks how many crafting permits you hold for augments, blueprints and other unique items, across all your characters.
 
 1. Open the **Permits** tab.
-2. Drop a `dune-augments-*.json` export (and a blueprints export, if you have one) onto the page, or use **Load exports…**.
+2. Drop your exports onto the page, or use **Load exports…**. You can load several at once:
+   - `dune-augments-*.json`: augment permits.
+   - `dune-uniques-*.json`: weapon, armor and other unique item permits.
+3. In **Loaded exports**, add each of your characters once under **Characters**.
+4. Pick the character for each file from its **Character** dropdown. The exports don't record this themselves.
 
-Loading a newer export of the same kind replaces the older one, and the data is remembered in the browser.
+**Characters:**
 
-The table shows:
+- Names are matched without regard to capitals, so the same name can't be added twice.
+- With only one character in the list, new files are assigned to it automatically.
+- Removing a character (×) marks its files *Unassigned*. You're asked first if any files use it.
+- The list is kept when you use **Clear all**, ready for your next exports.
+
+**Exports:**
+
+- Exports are made per character, so load one of each type for every character.
+- When two exports of the same type have the same character, only the newest is counted. The older one is marked *not counted*, so re-exporting never double-counts.
+- Use **Remove** to drop a file, or **Clear all** to start over.
+
+Everything is remembered in the browser.
+
+The table adds permits up across the selected characters and shows:
 
 - **Tier:** S, A, B or C, from the [item catalog](#item-catalog).
-- **Category:** the item's group from the item catalog, such as Ranged Weapon Augmentations. An item missing from the catalog is marked *not in catalog* and uses the export's own group.
-- **G1 to G5:** permits held at each grade. A blank cell means the item can't be crafted at that grade, and ∞ means unlimited.
+- **Category:** the item's group from the item catalog, such as Ranged Weapon Augmentations or Weapons. Other uniques use the export's group, such as Steel Products. An augment or blueprint missing from the catalog is marked *not in catalog*.
+- **Held by:** which characters hold permits for the item. Only shown once more than one character is loaded.
+- **G0 to G5:** permits held at each grade. G0 is ungraded, which covers most uniques. A blank cell means the item can't be crafted at that grade, and ∞ means unlimited.
 - **Total:** permits across all grades.
 
-**Filters:** Type, Category, Tier and Grade are multi-select dropdowns. Tick several options in one filter to show items that match any of them; **All** and **Clear** in each dropdown reset it.
+**Filters:** Character, Type, Category, Tier and Grade are multi-select dropdowns. Tick several options in one filter to show items that match any of them; **All** and **Clear** in each dropdown reset it.
 
-- **Type:** augments or blueprints. Only appears once both kinds are loaded.
-- **Category:** the item catalog's groups.
+- **Character:** which characters' permits to add up. Only appears once more than one character is loaded.
+- **Type:** augments, blueprints (uniques that are in the item catalog's blueprint lists) or uniques. Only appears once more than one type is loaded.
+- **Category:** the categories shown in the table.
 - **Tier:** S, A, B, C or untiered.
 - **Grade:** hides items that can't be crafted at any chosen grade, highlights those grade columns, and makes the totals count only those grades.
 - **Name search.**
 - **Only with permits.**
+- **Hide unlimited:** hides items with unlimited (∞) permits, so the Permits total is a plain number.
 
 Click any column heading to sort.
 

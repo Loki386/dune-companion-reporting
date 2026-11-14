@@ -28,7 +28,7 @@ header { padding: 16px; border-bottom: 1px solid var(--border); background: var(
 h1 { font-size: 18px; margin: 0 12px 0 0; }
 main { padding: 16px; max-width: 1500px; margin: 0 auto; }
 a { color: var(--accent); }
-button, select, input[type=search] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+button, select, input[type=search], input[type=text] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 .muted { color: var(--muted); }
@@ -36,7 +36,7 @@ button:hover { border-color: var(--accent); }
 .row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
 label { display: inline-flex; gap: 6px; align-items: center; }
 #drop { border: 2px dashed var(--border); border-radius: 10px; padding: 48px 16px; text-align: center; background: var(--panel); }
-body.dragging #drop { border-color: var(--accent); background: var(--accent-soft); }
+body.dragging #drop, body.dragging #filesPanel { border-color: var(--accent); background: var(--accent-soft); }
 .stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
 .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 120px; }
 .stat b { display: block; font-size: 20px; }
@@ -46,14 +46,27 @@ th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: 
 th { position: sticky; top: 0; background: var(--panel); font-weight: 600; cursor: pointer; user-select: none; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 th.focus, td.focus { background: var(--accent-soft); }
-tbody tr:hover td { background: var(--accent-soft); }
+#table tbody tr:hover td { background: var(--accent-soft); }
 td.zero { color: var(--muted); }
+td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--muted); }
 .tier { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; }
 .tier.S { background: var(--ok-soft); color: var(--ok); }
 .tier.A { background: var(--accent-soft); color: var(--accent); }
 .tier.B { background: var(--warn-soft); color: var(--warn); }
 .tier.C { background: var(--bad-soft); color: var(--bad); }
 .tier.none { color: var(--muted); font-weight: 400; }
+#filesPanel { padding: 0; }
+#filesPanel > summary { padding: 10px 12px; cursor: pointer; }
+#filesPanel table th { cursor: default; position: static; }
+#filesPanel tr.superseded td { color: var(--muted); }
+#filesPanel tr.superseded td:first-child { text-decoration: line-through; }
+#filesPanel select { padding: 3px 8px; min-width: 160px; }
+#filesPanel .note { padding: 8px 12px; margin: 0; }
+#charManager { padding: 10px 12px; border-top: 1px solid var(--border); }
+#charManager input[type=text] { width: 180px; padding: 3px 8px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg); }
+.chip button { border: 0; background: none; padding: 0 6px; color: var(--muted); font-size: 15px; line-height: 1; }
+.chip button:hover { color: var(--bad); }
 .ms { position: relative; }
 .ms summary { list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: 6px; padding: 5px 28px 5px 10px; background: var(--panel); white-space: nowrap; position: relative; }
 .ms summary::-webkit-details-marker { display: none; }
@@ -76,26 +89,41 @@ td.zero { color: var(--muted); }
   <a href="index.html#drop-rates" target="_top" class="home-link">Drop rates</a>
   <input type="file" id="fileInput" accept=".json,application/json" multiple class="hidden">
   <button id="openBtn">Load exports…</button>
-  <button id="clearBtn" class="hidden">Clear</button>
+  <button id="clearBtn" class="hidden">Clear all</button>
 </header>
 <main>
   <div id="drop">
-    <p><b>Drop a <code>dune-augments-*.json</code> or blueprints export here</b></p>
-    <p class="muted">Or use “Load exports…”. Files are only read in this browser and remembered here. Loading a newer export of the same kind replaces the older one.</p>
+    <p><b>Drop <code>dune-augments-*.json</code> and <code>dune-uniques-*.json</code> exports here</b></p>
+    <p class="muted">Or use “Load exports…”. Exports are per character, so load as many as you like and name the character for each one. Files are only read in this browser and remembered here.</p>
   </div>
 
   <div id="app" class="hidden">
+    <details class="panel" id="filesPanel" open>
+      <summary><b>Loaded exports</b> <span class="muted" id="filesSummary"></span></summary>
+      <div id="charManager" class="row">
+        <b>Characters</b>
+        <span id="charChips" class="row" style="gap:6px"></span>
+        <form id="charForm" class="row" style="gap:6px"><input type="text" id="charInput" placeholder="Character name" aria-label="New character name"><button type="submit">Add</button></form>
+      </div>
+      <div class="table-wrap" style="border:0;border-top:1px solid var(--border);border-radius:0"><table id="filesTable"><thead><tr>
+        <th>File</th><th>Type</th><th>Exported</th><th class="num">Items</th><th class="num">Permits</th><th>Character</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
+      <p class="muted note">Exports don't say which character they came from, so add your characters above and pick one for each file. When two exports of the same type have the same character, only the newest is counted.</p>
+    </details>
+
     <div class="panel row">
+      <details class="ms" id="fChar" data-key="char" data-label="Character"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fType" data-key="type" data-label="Type"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fGroup" data-key="group" data-label="Category"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fTier" data-key="tier" data-label="Tier"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fGrade" data-key="grade" data-label="Grade"><summary></summary><div class="ms-menu"></div></details>
       <label><input type="search" id="fSearch" placeholder="Search names…"></label>
       <label><input type="checkbox" id="fOwned"> Only with permits</label>
+      <label title="Hide items with unlimited (∞) permits"><input type="checkbox" id="fNoInf"> Hide unlimited</label>
     </div>
     <div class="stats" id="stats"></div>
     <div class="table-wrap"><table id="table"><thead></thead><tbody></tbody></table></div>
-    <p class="muted">Each grade column shows how many permits you hold for that grade; ∞ means unlimited. A blank cell means the item can't be crafted at that grade. Choosing grades hides items that can't be crafted at any of them, and the totals then count only those grades. Ticking several options in one filter shows items that match any of them. Category and tier come from <code>item-catalog.js</code>; items marked “not in catalog” use the export's own category until you add them there.</p>
+    <p class="muted">Permits are added up across the selected characters. Each grade column shows how many permits are held for that grade (G0 is ungraded); ∞ means unlimited. A blank cell means the item can't be crafted at that grade. Choosing grades hides items that can't be crafted at any of them, and the totals then count only those grades. Ticking several options in one filter shows items that match any of them. Category and tier come from <code>item-catalog.js</code>; augments or blueprints marked “not in catalog” use the export's own category until you add them there.</p>
   </div>
 </main>
 
@@ -105,7 +133,7 @@ td.zero { color: var(--muted); }
   // Inside the home page the tabs replace the link to the other page.
   if (window.self !== window.top) document.querySelectorAll('.home-link').forEach(a => a.classList.add('hidden'));
   const $ = s => document.querySelector(s);
-  const LS_DATA = 'dune-permits:exports', LS_VIEW = 'dune-permits:view';
+  const LS_FILES = 'dune-permits:files', LS_OLD = 'dune-permits:exports', LS_VIEW = 'dune-permits:view', LS_CHARS = 'dune-permits:characters';
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
@@ -116,6 +144,7 @@ td.zero { color: var(--muted); }
   const fmtDate = ms => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const normName = n => String(n).replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
   const TIERS = ['S', 'A', 'B', 'C'];
+  const UNASSIGNED = 'Unassigned';
   // The master catalog is the source of truth for kind, group and tier; the export's own groupName is only
   // a fallback for items the catalog doesn't list yet.
   const catalog = new Map();
@@ -123,13 +152,30 @@ td.zero { color: var(--muted); }
     for (const [group, items] of Object.entries(groups))
       for (const [name, tier] of Object.entries(items))
         if (!catalog.has(normName(name))) catalog.set(normName(name), { kind, group, tier: TIERS.includes(tier) ? tier : '' });
-  const typeLabel = t => t === 'augments' ? 'Augments' : t === 'blueprints' ? 'Blueprints' : t.charAt(0).toUpperCase() + t.slice(1);
+  const catalogKinds = new Set(Object.keys(window.ITEM_CATALOG || {}));
+  const typeLabel = t => ({ augments: 'Augments', blueprints: 'Blueprints', uniques: 'Uniques' })[t] || t.charAt(0).toUpperCase() + t.slice(1);
+  const charOf = f => f.character.trim() || UNASSIGNED;
 
-  // { [exportType]: { exportType, exportedAt, fileName, items: [{ name, group, grades, permits: { grade: count, or null for unlimited } }] } }
-  let exportsByType = store.get(LS_DATA, {});
-  const view = Object.assign({ search: '', owned: false, sort: { key: 'tier', dir: 1 } }, store.get(LS_VIEW, {}));
+  // One entry per loaded file:
+  // { key, fileName, exportType, exportedAt, character, items: [{ rid, name, group, grades, permits: { grade: count, or null for unlimited } }] }
+  let files = store.get(LS_FILES, null);
+  if (!files) { // Older versions kept one export per type.
+    files = Object.values(store.get(LS_OLD, {})).map(e => ({ ...e, key: `${e.fileName}|${e.exportedAt}`, character: '' }));
+    if (files.length) store.set(LS_FILES, files);
+    store.del(LS_OLD);
+  }
+  // The managed character list; seeded from names already on files.
+  const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+  let characters = store.get(LS_CHARS, null) || [...new Set(files.map(f => f.character.trim()).filter(Boolean))].sort(byName);
+  const save = () => {
+    const ok = store.set(LS_FILES, files) & store.set(LS_CHARS, characters);
+    if (!ok) $('#fileInfo').title = 'This browser blocked local storage, so exports must be loaded again after reloading.';
+  };
+
+  const view = Object.assign({ search: '', owned: false, noInf: false, sort: { key: 'tier', dir: 1 } }, store.get(LS_VIEW, {}));
   // Multi-select filters: each holds the ticked values as strings; empty means no filter.
-  for (const k of ['type', 'group', 'tier', 'grade']) view[k] = Array.isArray(view[k]) ? view[k].map(String) : view[k] ? [String(view[k])] : [];
+  for (const k of ['char', 'type', 'group', 'tier', 'grade']) view[k] = Array.isArray(view[k]) ? view[k].map(String) : view[k] ? [String(view[k])] : [];
+  const any = (key, v) => !view[key].length || view[key].includes(v);
 
   function parse(text, fileName) {
     let d;
@@ -138,7 +184,7 @@ td.zero { color: var(--muted); }
     if (!Array.isArray(nodes)) {
       alert(Array.isArray(d?.data?.sessions)
         ? `${fileName} is a sessions export. Load it on the Drop rates page instead.`
-        : `${fileName}: no data.nodes list found. Is this an augments or blueprints export?`);
+        : `${fileName}: no data.nodes list found. Is this an augments or uniques export?`);
       return null;
     }
     const permits = new Map();
@@ -150,29 +196,65 @@ td.zero { color: var(--muted); }
     const items = [];
     for (const n of nodes) for (const u of n.unlocks || []) {
       if (!u.name) continue;
-      items.push({ name: u.name.trim(), group: n.groupName || '', grades: u.supportedGrades || [], permits: permits.get(u.recipeId) || {} });
+      items.push({ rid: u.recipeId || '', name: u.name.trim(), group: n.groupName || '', grades: u.supportedGrades || [], permits: permits.get(u.recipeId) || {} });
     }
     const exportType = d.exportType || fileName.match(/dune-(\w+)-/)?.[1] || 'unknown';
-    return { exportType, exportedAt: d.exportedAt ? Date.parse(d.exportedAt) : 0, fileName, items };
+    const exportedAt = d.exportedAt ? Date.parse(d.exportedAt) : 0;
+    return { key: `${fileName}|${exportedAt}`, fileName, exportType, exportedAt, character: '', items };
   }
 
-  async function addFiles(files) {
-    for (const f of files) {
+  async function addFiles(list) {
+    for (const f of list) {
       const p = parse(await f.text(), f.name);
       if (!p) continue;
-      const old = exportsByType[p.exportType];
-      if (old && old.exportedAt > p.exportedAt &&
-          !confirm(`${f.name} is older than the ${typeLabel(p.exportType).toLowerCase()} export already loaded. Replace it anyway?`)) continue;
-      exportsByType[p.exportType] = p;
+      const i = files.findIndex(x => x.key === p.key);
+      if (i >= 0) p.character = files[i].character;
+      else if (characters.length === 1) p.character = characters[0]; // Only one character: assign it straight away.
+      if (i >= 0) files[i] = p; else files.push(p);
     }
-    if (!store.set(LS_DATA, exportsByType)) $('#fileInfo').title = 'This browser blocked local storage, so exports must be loaded again after reloading.';
+    save();
     render();
   }
 
-  const allItems = () => Object.values(exportsByType).flatMap(e => e.items.map(it => {
-    const c = catalog.get(normName(it.name));
-    return { ...it, type: c?.kind || e.exportType, group: c?.group || it.group, tier: c?.tier || '', unlisted: !c };
-  }));
+  // Per type and character only the newest export counts, so re-exports don't double up.
+  function countedKeys() {
+    const newest = new Map();
+    for (const f of files) {
+      const k = `${f.exportType}|${normName(charOf(f))}`;
+      if (!newest.has(k) || newest.get(k).exportedAt < f.exportedAt) newest.set(k, f);
+    }
+    return new Set([...newest.values()].map(f => f.key));
+  }
+
+  // Permits for the given grades (all when empty); Infinity when any counted grade is unlimited.
+  const countPermits = (permits, grades) => {
+    let n = 0;
+    for (const g of grades.length ? grades : Object.keys(permits).map(Number)) {
+      if (!(g in permits)) continue;
+      if (permits[g] === null) return Infinity;
+      n += permits[g];
+    }
+    return n;
+  };
+
+  // Merges the selected characters' exports into one row per item.
+  function combine(sources) {
+    const rows = new Map();
+    for (const f of sources) for (const it of f.items) {
+      const c = catalog.get(normName(it.name));
+      const key = `${f.exportType}|${it.rid || normName(it.name)}`;
+      let r = rows.get(key);
+      if (!r) rows.set(key, r = {
+        name: it.name, type: c?.kind || f.exportType, group: c?.group || it.group, tier: c?.tier || '',
+        unlisted: !c && catalogKinds.has(f.exportType), grades: new Set(), permits: {}, holders: []
+      });
+      it.grades.forEach(g => r.grades.add(g));
+      for (const [g, v] of Object.entries(it.permits))
+        r.permits[g] = v === null || r.permits[g] === null ? null : (r.permits[g] || 0) + v;
+      r.holders.push({ char: charOf(f), permits: it.permits });
+    }
+    return [...rows.values()];
+  }
 
   // Fills a checkbox dropdown and drops ticked values that are no longer offered.
   function multi(sel, list) {
@@ -185,58 +267,77 @@ td.zero { color: var(--muted); }
     el.querySelector('summary').innerHTML = `${esc(el.dataset.label)}: <b>${!names.length || names.length === list.length ? 'All' : names.length === 1 ? esc(names[0]) : `${names.length} selected`}</b>`;
   }
 
-  function render(restore) {
-    const types = Object.keys(exportsByType).sort();
-    $('#drop').classList.toggle('hidden', types.length > 0);
-    $('#app').classList.toggle('hidden', types.length === 0);
-    $('#clearBtn').classList.toggle('hidden', types.length === 0);
-    $('#fileInfo').textContent = types.length
-      ? types.map(t => `${typeLabel(t)} · exported ${exportsByType[t].exportedAt ? fmtDate(exportsByType[t].exportedAt) : '?'}`).join('  ·  ')
-      : 'No exports loaded';
-    if (!types.length) return;
+  function renderFiles(counted) {
+    const usage = c => files.filter(f => f.character === c).length;
+    $('#charChips').innerHTML = characters.map(c => `<span class="chip" title="${usage(c)} file${usage(c) === 1 ? '' : 's'}">${esc(c)}<button type="button" data-delchar="${esc(c)}" aria-label="Remove ${esc(c)}">×</button></span>`).join('')
+      || '<span class="muted">None yet. Add each character once, then pick one for each file below.</span>';
+    const options = c => `<option value="">${UNASSIGNED}</option>` + characters.map(n => `<option value="${esc(n)}" ${n === c ? 'selected' : ''}>${esc(n)}</option>`).join('');
+    const sorted = [...files].sort((a, b) => charOf(a).localeCompare(charOf(b)) || a.exportType.localeCompare(b.exportType) || b.exportedAt - a.exportedAt);
+    $('#filesTable tbody').innerHTML = sorted.map(f => {
+      const live = counted.has(f.key);
+      const total = f.items.reduce((a, it) => a + countPermits(it.permits, []), 0);
+      return `<tr data-key="${esc(f.key)}" class="${live ? '' : 'superseded'}" title="${live ? '' : `Not counted: a newer ${esc(typeLabel(f.exportType).toLowerCase())} export has the same character`}">
+        <td>${esc(f.fileName)}</td><td>${esc(typeLabel(f.exportType))}</td>
+        <td>${f.exportedAt ? fmtDate(f.exportedAt) : '?'}</td><td class="num">${fmt(f.items.length)}</td>
+        <td class="num">${total === Infinity ? '∞' : fmt(total)}</td>
+        <td><select aria-label="Character for ${esc(f.fileName)}">${options(f.character)}</select>${live ? '' : ' <span class="muted">not counted</span>'}</td>
+        <td><button type="button" data-remove>Remove</button></td></tr>`;
+    }).join('');
+    const nChars = new Set(files.map(charOf)).size;
+    $('#filesSummary').textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${nChars} character${nChars === 1 ? '' : 's'}`;
+  }
 
-    const all = allItems();
+  function render(restore) {
+    $('#drop').classList.toggle('hidden', files.length > 0);
+    $('#app').classList.toggle('hidden', files.length === 0);
+    $('#clearBtn').classList.toggle('hidden', files.length === 0);
+    if (!files.length) { $('#fileInfo').textContent = 'No exports loaded'; return; }
+
+    const counted = countedKeys();
+    renderFiles(counted);
+    const live = files.filter(f => counted.has(f.key));
+    const chars = [...new Set(live.map(charOf))].sort((a, b) => (a === UNASSIGNED) - (b === UNASSIGNED) || a.localeCompare(b));
+    $('#fileInfo').textContent = `${files.length} export${files.length === 1 ? '' : 's'} · ${chars.length} character${chars.length === 1 ? '' : 's'}`;
+    $('#fChar').classList.toggle('hidden', chars.length < 2);
+    multi('#fChar', chars.map(c => [c, c]));
+
+    const all = combine(live.filter(f => any('char', charOf(f))));
     const kinds = [...new Set(all.map(i => i.type))].sort();
     $('#fType').classList.toggle('hidden', kinds.length < 2);
     multi('#fType', kinds.map(t => [t, typeLabel(t)]));
-    const pool = all.filter(i => !view.type.length || view.type.includes(i.type));
+    const pool = all.filter(i => any('type', i.type));
     multi('#fGroup', [...new Set(pool.map(i => i.group))].filter(Boolean).sort().map(g => [g, g]));
     multi('#fTier', [...TIERS.map(t => [t, `${t}-Tier`]), ['none', 'Untiered']]);
-    const gradeList = Array.from({ length: Math.max(5, ...all.flatMap(i => i.grades)) }, (_, i) => i + 1);
-    multi('#fGrade', gradeList.map(g => [g, `Grade ${g}`]));
-    if (restore) { $('#fSearch').value = view.search; $('#fOwned').checked = view.owned; }
-    renderTable(all, gradeList);
+    const seen = all.flatMap(i => [...i.grades, ...Object.keys(i.permits).map(Number)]);
+    const lo = Math.min(1, ...seen), hi = Math.max(5, ...seen);
+    const gradeList = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
+    multi('#fGrade', gradeList.map(g => [g, g === 0 ? 'Grade 0 (ungraded)' : `Grade ${g}`]));
+    if (restore) { $('#fSearch').value = view.search; $('#fOwned').checked = view.owned; $('#fNoInf').checked = view.noInf; }
+    renderTable(all, gradeList, chars.length > 1);
   }
 
-  function renderTable(all, gradeList) {
-    const q = $('#fSearch').value.trim().toLowerCase(), owned = $('#fOwned').checked;
-    Object.assign(view, { search: $('#fSearch').value, owned });
+  function renderTable(all, gradeList, showHolders) {
+    const q = $('#fSearch').value.trim().toLowerCase(), owned = $('#fOwned').checked, noInf = $('#fNoInf').checked;
+    Object.assign(view, { search: $('#fSearch').value, owned, noInf });
     store.set(LS_VIEW, view);
     const grades = view.grade.map(Number).sort((a, b) => a - b), gradeSet = new Set(grades);
     const gradeTag = grades.length ? ` (${grades.map(g => 'G' + g).join(', ')})` : '';
-    const any = (key, v) => !view[key].length || view[key].includes(v);
+    const count = it => countPermits(it.permits, grades);
+    const holders = it => [...new Set(it.holders.filter(h => countPermits(h.permits, grades) > 0).map(h => h.char))];
 
-    // Permits for the selected grades, or all grades; Infinity when any counted grade is unlimited.
-    const count = it => {
-      let n = 0;
-      for (const g of grades.length ? grades : Object.keys(it.permits).map(Number)) {
-        if (!(g in it.permits)) continue;
-        if (it.permits[g] === null) return Infinity;
-        n += it.permits[g];
-      }
-      return n;
-    };
     const rows = all.filter(it =>
       any('type', it.type) && any('group', it.group) && any('tier', it.tier || 'none') &&
-      (!grades.length || grades.some(g => it.grades.includes(g) || g in it.permits)) &&
+      (!grades.length || grades.some(g => it.grades.has(g) || g in it.permits)) &&
       (!q || it.name.toLowerCase().includes(q)) &&
-      (!owned || count(it) > 0));
+      (!owned || count(it) > 0) &&
+      (!noInf || count(it) !== Infinity));
 
     const tierRank = t => t ? TIERS.indexOf(t) : TIERS.length;
     const cols = [
       { key: 'name', label: 'Name', get: it => it.name.toLowerCase() },
       { key: 'tier', label: 'Tier', get: it => tierRank(it.tier) },
       { key: 'group', label: 'Category', get: it => it.group },
+      ...(showHolders ? [{ key: 'held', label: 'Held by', get: it => holders(it).length }] : []),
       ...gradeList.map(g => ({ key: 'g' + g, label: `G${g}`, num: true, g, get: it => it.permits[g] === null ? Infinity : it.permits[g] || 0 })),
       { key: 'total', label: 'Total' + gradeTag, num: true, get: count }
     ];
@@ -246,7 +347,7 @@ td.zero { color: var(--muted); }
     rows.sort((a, b) => cmp(sc.get(a), sc.get(b)) * view.sort.dir || tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name));
 
     $('#table thead').innerHTML = '<tr>' + cols.map(col =>
-      `<th data-key="${col.key}" class="${col.num ? 'num' : ''}${gradeSet.has(col.g) ? ' focus' : ''}">${esc(col.label)}${view.sort.key === col.key ? (view.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+      `<th data-key="${col.key}" class="${col.num ? 'num' : ''}${gradeSet.has(col.g) ? ' focus' : ''}"${col.g === 0 ? ' title="Ungraded"' : ''}>${esc(col.label)}${view.sort.key === col.key ? (view.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
     $('#table thead').onclick = e => {
       const k = e.target.closest('th')?.dataset.key;
       if (!k) return;
@@ -255,7 +356,7 @@ td.zero { color: var(--muted); }
     };
     const cell = (it, g) => {
       const focus = gradeSet.has(g) ? ' focus' : '';
-      if (!it.grades.includes(g) && !(g in it.permits)) return `<td class="num${focus}" title="Not craftable at grade ${g}"></td>`;
+      if (!it.grades.has(g) && !(g in it.permits)) return `<td class="num${focus}" title="Not craftable at grade ${g}"></td>`;
       const v = it.permits[g];
       return v === null ? `<td class="num${focus}">∞</td>` : v ? `<td class="num${focus}">${fmt(v)}</td>` : `<td class="num zero${focus}">0</td>`;
     };
@@ -264,6 +365,7 @@ td.zero { color: var(--muted); }
       return `<tr><td>${esc(it.name)}${it.unlisted ? ' <span class="tier none" title="Add this item to item-catalog.js to set its category and tier">not in catalog</span>' : ''}</td>
         <td>${it.tier ? `<span class="tier ${it.tier}">${it.tier}</span>` : '<span class="tier none">—</span>'}</td>
         <td class="muted">${esc(it.group)}</td>
+        ${showHolders ? `<td class="held">${esc(holders(it).join(', '))}</td>` : ''}
         ${gradeList.map(g => cell(it, g)).join('')}
         <td class="num"><b>${total === Infinity ? '∞' : total ? fmt(total) : '<span class="muted">0</span>'}</b></td></tr>`;
     }).join('') || `<tr><td colspan="${cols.length}" class="muted">No items match.</td></tr>`;
@@ -276,7 +378,40 @@ td.zero { color: var(--muted); }
     ].map(([l, v]) => `<div class="stat"><span class="muted">${l}</span><b>${v}</b></div>`).join('');
   }
 
-  ['#fSearch', '#fOwned'].forEach(s => $(s).addEventListener('input', () => render()));
+  // Loaded exports list: character names and removal.
+  $('#filesTable').addEventListener('change', e => {
+    if (!e.target.matches('select')) return;
+    files.find(x => x.key === e.target.closest('tr').dataset.key).character = e.target.value;
+    save(); render();
+  });
+  $('#charForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('#charInput').value.replace(/\s+/g, ' ').trim();
+    if (!name) return;
+    const dup = characters.find(c => byName(c, name) === 0);
+    if (dup) { alert(`${dup} is already in the list.`); return; }
+    characters = [...characters, name].sort(byName);
+    $('#charInput').value = '';
+    save(); render();
+    $('#charInput').focus();
+  });
+  $('#charChips').addEventListener('click', e => {
+    const name = e.target.closest('[data-delchar]')?.dataset.delchar;
+    if (name == null) return;
+    const used = files.filter(f => f.character === name).length;
+    if (used && !confirm(`${name} is assigned to ${used} file${used === 1 ? '' : 's'}. Remove the character and mark ${used === 1 ? 'that file' : 'those files'} Unassigned?`)) return;
+    characters = characters.filter(c => c !== name);
+    files.forEach(f => { if (f.character === name) f.character = ''; });
+    save(); render();
+  });
+  $('#filesTable').addEventListener('click', e => {
+    if (!e.target.matches('[data-remove]')) return;
+    const key = e.target.closest('tr').dataset.key;
+    files = files.filter(f => f.key !== key);
+    save(); render();
+  });
+
+  ['#fSearch', '#fOwned', '#fNoInf'].forEach(s => $(s).addEventListener('input', () => render()));
   document.querySelectorAll('.ms').forEach(el => {
     const key = el.dataset.key, menu = el.querySelector('.ms-menu');
     el.addEventListener('toggle', () => { if (el.open) document.querySelectorAll('.ms[open]').forEach(o => { if (o !== el) o.open = false; }); });
@@ -296,8 +431,8 @@ td.zero { color: var(--muted); }
   $('#openBtn').onclick = () => $('#fileInput').click();
   $('#fileInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
   $('#clearBtn').onclick = () => {
-    if (!confirm('Remove the loaded exports from this browser?')) return;
-    exportsByType = {}; store.del(LS_DATA); render();
+    if (!confirm('Remove all loaded exports from this browser?')) return;
+    files = []; store.del(LS_FILES); render(); // The character list is kept for the next exports.
   };
   let dragDepth = 0;
   document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
@@ -305,8 +440,8 @@ td.zero { color: var(--muted); }
   document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
   document.addEventListener('drop', e => {
     e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
-    const files = [...(e.dataTransfer?.files || [])].filter(f => /\.json$/i.test(f.name));
-    if (files.length) addFiles(files);
+    const list = [...(e.dataTransfer?.files || [])].filter(f => /\.json$/i.test(f.name));
+    if (list.length) addFiles(list);
   });
 
   render(true);
