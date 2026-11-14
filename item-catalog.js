@@ -1,10 +1,14 @@
-// Master item catalog: the source of truth for item classification and tier.
-// Layout: kind -> group -> { item name: tier }. Tier is "S", "A", "B", "C", or "" for untiered.
-// Augment groups are the in-game groupName from the augments export. Names match exports without regard to capitals.
-// Used by the Items tab (index.html) and the Permits page (permits.html).
+// Master item catalog: the source of truth for each item's kind, category and rank.
+// Used by the Items tab (drop-rates.html) and the Permits page (permits.html).
+//
+//   ITEM_CATALOG:       kind -> category -> { item name: rank }
+//   CATEGORY_OVERRIDES: display names for the export's own groups, for items ITEM_CATALOG doesn't list
+//
+// Rank is "S", "A", "B", "C", or "" for unranked. A "T<n>:" prefix on a category name is its tier: categories
+// list untagged first, then T6 down to T0. Item and group names match exports without regard to capitals.
 window.ITEM_CATALOG = {
   augments: {
-    "Garment Augmentations": {
+    "Augments: Garment": {
       "Blade-warding Weave": "S",
       "Concussive Dampening": "C",
       "Concussive Redirection": "C",
@@ -17,12 +21,12 @@ window.ITEM_CATALOG = {
       "Flame-resistant Fabrics": "B",
       "Garment Reinforcement": "A",
       "Penetrative Reinforcement": "S",
-	  "Protective Coating": "B",
+      "Protective Coating": "B",
       "Radiation Absorbing Fabrics": "B",
       "Radiation Shielded Latticing": "C",
       "Woven Reinforcement": "S"
     },
-    "Melee Weapon Augmentations": {
+    "Augments: Melee Weapon": {
       "Aggressive Grip Adjuster": "B",
       "Blade Blood Grooves": "C",
       "Blade Flexi-Coating": "C",
@@ -35,7 +39,7 @@ window.ITEM_CATALOG = {
       "Heavy Metal Blade Coating": "S",
       "Lightweight Adjuster": "C"
     },
-    "Ranged Weapon Augmentations": {
+    "Augments: Ranged Weapon": {
       "Barrel Extender": "C",
       "Capacity Expander": "B",
       "Disruptive Coating": "A",
@@ -116,7 +120,7 @@ window.ITEM_CATALOG = {
     }
   },
   blueprints: {
-    "Weapons": {
+    "T6: Weapons": {
       "A Dart for Every Man": "B",
       "Ambition": "A",
       "Bashar's Command": "C",
@@ -159,7 +163,7 @@ window.ITEM_CATALOG = {
       "Vaporizer": "C",
       "Way of the Misr": "B"
     },
-    "Armor": {
+    "T6: Armor": {
       "Bulwark Boots": "A",
       "Bulwark Chest": "A",
       "Bulwark Gloves": "A",
@@ -205,10 +209,20 @@ window.ITEM_CATALOG = {
       "Wayfinder Helm": "C",
       "Yueh's Reaper Gloves": "C"
     },
-    "Accessories": {
+    "T6: Utility": {
       "Accelerator Power Pack": "S",
       "Elohim-Class Suspensor Belt": "S",
       "Experimental Toxin-Absorption Pills": "A"
     }
   }
+};
+
+// Groups not listed here keep the export's name.
+window.CATEGORY_OVERRIDES = {
+  "Copper Products": "T1: Copper Products",
+  "Iron Products": "T2: Iron Products",
+  "Steel Products": "T3: Steel Products",
+  "Aluminum Products": "T4: Aluminum Products",
+  "Duraluminum Products": "T5: Duraluminum Products",
+  "Plastanium Products": "T6: Plastanium Products"
 };

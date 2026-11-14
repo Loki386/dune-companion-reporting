@@ -38,7 +38,7 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: var(-
   <h1>Dune Reporting</h1>
   <div class="tabs" role="tablist">
     <a href="#drop-rates" role="tab" data-page="drop-rates.html" title="Drop rates per dungeon and level, from session exports">Drop rates</a>
-    <a href="#permits" role="tab" data-page="permits.html" title="Crafting permits held per grade, from augments and blueprints exports">Permits</a>
+    <a href="#permits" role="tab" data-page="permits.html" title="Crafting permits held per grade across your characters, from augments and uniques exports">Permits</a>
   </div>
 </nav>
 <main id="frames"></main>
@@ -55,13 +55,13 @@ iframe { display: block; width: 100%; height: 100%; border: 0; background: var(-
     const tab = tabs.find(t => t.hash === hash) || tabs.find(t => t.hash === remembered()) || tabs[0];
     for (const t of tabs) t.setAttribute('aria-selected', String(t === tab));
     if (!frames.has(tab.hash)) {
-      const f = document.createElement('iframe');
-      f.src = tab.dataset.page;
-      f.title = tab.textContent;
-      document.getElementById('frames').appendChild(f);
-      frames.set(tab.hash, f);
+      const frame = document.createElement('iframe');
+      frame.src = tab.dataset.page;
+      frame.title = tab.textContent;
+      document.getElementById('frames').appendChild(frame);
+      frames.set(tab.hash, frame);
     }
-    for (const [h, f] of frames) f.classList.toggle('hidden', h !== tab.hash);
+    for (const [key, frame] of frames) frame.classList.toggle('hidden', key !== tab.hash);
     document.title = `${tab.textContent} · Dune Reporting`;
     try { localStorage.setItem(LS_TAB, tab.hash); } catch {}
     if (location.hash !== tab.hash) history.replaceState(null, '', tab.hash);

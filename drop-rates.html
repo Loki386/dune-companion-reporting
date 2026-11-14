@@ -184,48 +184,47 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   </div>
 </main>
 
+<script src="common.js"></script>
 <script src="item-catalog.js"></script>
 <script>
 (() => {
-  // Inside the home page the tabs replace the link to the other page.
-  if (window.self !== window.top) document.querySelectorAll('.home-link').forEach(a => a.classList.add('hidden'));
-  const $ = s => document.querySelector(s);
-  const LS_OVR = 'dune-drops:overrides', LS_CHART = 'dune-drops:chart', LS_ITEMS = 'dune-drops:excludedItems';
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
-  };
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const { $, esc, plural, fmtDate, normName, byCategory, store, hideHomeLinkInFrame, onJsonDrop } = window.Common;
+  hideHomeLinkInFrame();
+
+  // ---------- formatting ----------
   const fmt = (n, d = 0) => n == null || isNaN(n) ? '—' : n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
-  const fmtRate = n => n >= 100 ? fmt(n, 0) : n >= 10 ? fmt(n, 1) : fmt(n, 2);
-  const fmtPct = n => n == null || isNaN(n) ? '—' : n === 0 ? '0%' : (n >= 100 ? fmt(n, 0) : n >= 10 ? fmt(n, 1) : fmt(n, 2)) + '%';
-  const fmtDate = ms => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const fmtRate = n => n >= 100 ? fmt(n, 0) : n >= 10 ? fmt(n, 1) : fmt(n, 2); // fewer decimals for bigger numbers
+  const fmtPct = n => n == null || isNaN(n) ? '—' : n === 0 ? '0%' : fmtRate(n) + '%';
   const fmtDay = ms => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
-  let sources = [];            // { key, label, fileName, exportedAt, raw: [...sessions], used }
-  let sessions = [];
-  // Sessions the user unticked; every other single dungeon/level session is included.
+  // ---------- state ----------
+  const LS_OVR = 'dune-drops:overrides', LS_CHART = 'dune-drops:chart', LS_ITEMS = 'dune-drops:excludedItems';
+  let sources = [];  // one per loaded export: { key, label, fileName, exportedAt, raw: [...sessions], used }
+  let sessions = []; // normalized sessions from every source, de-duplicated by session id
+  // Sessions the user unticked ({ sessionId: false }); every other single dungeon/level session is included.
   let overrides = Object.fromEntries(Object.entries(store.get(LS_OVR, {})).filter(([, v]) => v === false));
+  let excludedItems = new Set(store.get(LS_ITEMS, [])); // item ids left out of the drop rates
+  let itemIndex = new Map();                             // id -> { id, name, cur, sessions, total }
   let chartOpts = Object.assign({ metric: 'rate', win: 10, unit: 'sessions' }, store.get(LS_CHART, {}));
   let sessSort = { key: 'start', dir: -1 }, dropSort = { key: 'perRun', dir: -1 };
   let expanded = new Set(), selectedItem = null;
-  let excludedItems = new Set(store.get(LS_ITEMS, []));   // item ids left out of the drop rates
-  let itemIndex = new Map();                                // id -> { id, name, cur, bp, sessions, total }
   const srcLabel = key => sources.find(s => s.key === key)?.label ?? '?';
   const isBlueprint = id => id.endsWith('_schematic');
   const bpPill = id => isBlueprint(id) ? ' <span class="pill bp">blueprint</span>' : '';
 
-  // Fixed sections from item-catalog.js, keyed by normalized name.
-  const normName = n => n.replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+  // ---------- item catalog (item-catalog.js) ----------
+  // Augments and Blueprints list the catalog's groups; Other holds every other observed item.
   const CATALOG = window.ITEM_CATALOG || {};
-  const catalogGroups = kind => Object.entries(CATALOG[kind] || {}).map(([title, items]) => ({ title, names: Object.keys(items) }));
+  const catalogGroups = kind => Object.entries(CATALOG[kind] || {})
+    .map(([title, items]) => ({ title, names: Object.keys(items) }))
+    .sort((a, b) => byCategory(a.title, b.title));
   const SECTIONS = [
     { key: 'augments', title: 'Augments', groups: catalogGroups('augments') },
     { key: 'blueprints', title: 'Blueprints', groups: catalogGroups('blueprints') },
     { key: 'other', title: 'Other', groups: [{ title: null, names: null }] }
   ];
   const catalogNames = new Set(SECTIONS.flatMap(s => s.groups.flatMap(g => (g.names || []).map(normName))));
-  // Only blueprint drops of listed names belong to Augments/Blueprints; the crafted items go to Other.
+  // Only blueprint drops of listed names belong to Augments/Blueprints; the items they craft go to Other.
   const inCatalog = it => isBlueprint(it.id) && catalogNames.has(normName(it.name));
 
   // ---------- export storage (IndexedDB, so several large exports survive reloads) ----------
@@ -255,7 +254,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     del(k) { return this.tx('readwrite', s => s.delete(k)); }
   };
 
-  // ---------- loading ----------
+  // ---------- loading exports ----------
   function parseExport(text, fileName) {
     let d;
     try { d = JSON.parse(text); } catch { alert(`${fileName} is not valid JSON.`); return null; }
@@ -297,7 +296,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     }
     const total = sources.reduce((a, s) => a + s.raw.length, 0);
     $('#fileInfo').textContent = sources.length
-      ? `${sources.length} export${sources.length > 1 ? 's' : ''} · ${sessions.length} sessions` + (total > sessions.length ? ` (${total - sessions.length} duplicates skipped)` : '')
+      ? `${plural(sources.length, 'export')} · ${plural(sessions.length, 'session')}` + (total > sessions.length ? ` (${total - sessions.length} duplicates skipped)` : '')
       : 'No exports loaded';
     $('#drop').classList.toggle('hidden', sources.length > 0);
     $('#app').classList.toggle('hidden', sources.length === 0);
@@ -310,6 +309,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     renderDrops();
   }
 
+  // One session from an export, reshaped for this page. Loot and currencies are summed per item id.
   function normalize(s, source) {
     const runs = s.dungeonRuns || [];
     const keys = new Set(runs.map(r => r.dungeonId + '|' + r.difficulty));
@@ -333,7 +333,6 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
         : '',
       level: keys.size === 1 ? first.difficulty : null,
       runSec, active: s.activeSeconds || 0,
-      carry: runs.some(r => r.startedBeforeSegment),
       loot
     };
     function add(m, id, name, amt, cur) {
@@ -372,31 +371,49 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   });
 
   // ---------- inclusion ----------
-  function reasons(s) {
-    const r = [];
+  // A session is eligible when every run is the same dungeon and level; eligible sessions are included
+  // unless the user unticked them.
+  function status(s) {
+    const r = []; // reasons it can't be used
     if (!s.runCount) r.push('No dungeon runs');
     if (s.mixed) r.push('Mixed dungeons/levels');
-    return { r, eligible: r.length === 0 };
-  }
-  function status(s) {
-    const { r, eligible } = reasons(s);
-    if (!eligible) return { included: false, eligible, manual: false, r };
+    if (r.length) return { included: false, eligible: false, manual: false, r };
     const o = overrides[s.id];
-    return { included: o ?? true, eligible, manual: o !== undefined, r };
+    return { included: o ?? true, eligible: true, manual: o !== undefined, r };
   }
-  function setOverride(ids, val) {
-    for (const id of ids) val === null || val === true ? delete overrides[id] : overrides[id] = val;
+  function setIncluded(ids, include) {
+    for (const id of ids) include ? delete overrides[id] : overrides[id] = false;
     store.set(LS_OVR, overrides);
     renderSessions(); renderDrops();
   }
 
-  // ---------- sessions tab ----------
-  function options(sel, values, allLabel) {
+  // ---------- shared table and filter helpers ----------
+  function fillSelect(sel, values, allLabel) {
     const el = $(sel), prev = el.value;
     el.innerHTML = (allLabel ? `<option value="">${esc(allLabel)}</option>` : '') + values.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('');
     if ([...el.options].some(o => o.value === prev)) el.value = prev;
   }
   const sourceList = () => sources.map(s => [s.key, s.label]);
+
+  function sortBy(list, cols, sort) {
+    const c = cols.find(c => c.key === sort.key);
+    return list.sort((a, b) => {
+      const x = c.get(a), y = c.get(b);
+      return (typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y) * sort.dir;
+    });
+  }
+  // Header row with sort arrows; clicking a heading sorts by it (again to reverse).
+  function renderHead(table, cols, sort, onSort) {
+    const thead = $(table + ' thead');
+    thead.innerHTML = '<tr>' + cols.map(c => `<th data-k="${c.key}" class="${c.num ? 'num' : ''}">${esc(c.label)}${sort.key === c.key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+    thead.onclick = e => {
+      const k = e.target.closest('th')?.dataset.k; if (!k) return;
+      if (sort.key === k) sort.dir *= -1; else { sort.key = k; sort.dir = cols.find(c => c.key === k).num ? -1 : 1; }
+      onSort();
+    };
+  }
+
+  // ---------- sessions tab ----------
   // Built from runs, so mixed sessions contribute every dungeon and level they touched.
   function dungeonList(list) {
     const m = new Map();
@@ -409,12 +426,12 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     return [...lv].sort((a, b) => a - b).map(l => [String(l), 'Level ' + l]);
   }
   function fillSessionFilters() {
-    options('#fSource', sourceList(), 'All accounts');
-    options('#fDungeon', dungeonList(sessions), 'All dungeons');
-    options('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels');
-    options('#fChar', [...new Set(sessions.map(s => s.char))].sort().map(c => [c, c]), 'All characters');
+    fillSelect('#fSource', sourceList(), 'All accounts');
+    fillSelect('#fDungeon', dungeonList(sessions), 'All dungeons');
+    fillSelect('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels');
+    fillSelect('#fChar', [...new Set(sessions.map(s => s.char))].sort().map(c => [c, c]), 'All characters');
   }
-  $('#fDungeon').addEventListener('change', () => { options('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels'); renderSessions(); });
+  $('#fDungeon').addEventListener('change', () => { fillSelect('#fLevel', levelList(sessions, $('#fDungeon').value), 'All levels'); renderSessions(); });
   ['#fSource', '#fLevel', '#fChar', '#fStatus'].forEach(s => $(s).addEventListener('change', renderSessions));
 
   function shownSessions() {
@@ -446,27 +463,10 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     { key: 'why', label: 'Notes', get: s => status(s).r.join(', ') }
   ];
 
-  function sortBy(list, cols, sort) {
-    const c = cols.find(c => c.key === sort.key);
-    return list.sort((a, b) => {
-      const x = c.get(a), y = c.get(b);
-      return (typeof x === 'string' ? x.localeCompare(y, undefined, { numeric: true }) : x - y) * sort.dir;
-    });
-  }
-  function head(table, cols, sort, onSort) {
-    const thead = $(table + ' thead');
-    thead.innerHTML = '<tr>' + cols.map(c => `<th data-k="${c.key}" class="${c.num ? 'num' : ''}">${esc(c.label)}${sort.key === c.key ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
-    thead.onclick = e => {
-      const k = e.target.closest('th')?.dataset.k; if (!k) return;
-      if (sort.key === k) sort.dir *= -1; else { sort.key = k; sort.dir = cols.find(c => c.key === k).num ? -1 : 1; }
-      onSort();
-    };
-  }
-
   function renderSessions() {
     if (!sessions.length) return;
     const list = sortBy(shownSessions(), SESS_COLS, sessSort);
-    head('#sessTable', SESS_COLS, sessSort, renderSessions);
+    renderHead('#sessTable', SESS_COLS, sessSort, renderSessions);
     const inc = sessions.filter(s => status(s).included);
     const groups = new Set(inc.map(s => s.dungeonId + '|' + s.level));
     $('#sessStats').innerHTML = [
@@ -494,24 +494,25 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   $('#sessTable tbody').addEventListener('click', e => {
     const tr = e.target.closest('tr[data-id]'); if (!tr) return;
     const id = tr.dataset.id;
-    if (e.target.matches('input[type=checkbox]')) { setOverride([id], e.target.checked); return; }
+    if (e.target.matches('input[type=checkbox]')) { setIncluded([id], e.target.checked); return; }
     expanded.has(id) ? expanded.delete(id) : expanded.add(id);
     renderSessions();
   });
-  $('#incAll').onclick = () => setOverride(shownSessions().filter(s => status(s).eligible).map(s => s.id), true);
-  $('#excAll').onclick = () => setOverride(shownSessions().filter(s => status(s).eligible).map(s => s.id), false);
+  const shownEligible = () => shownSessions().filter(s => status(s).eligible).map(s => s.id);
+  $('#incAll').onclick = () => setIncluded(shownEligible(), true);
+  $('#excAll').onclick = () => setIncluded(shownEligible(), false);
 
   // ---------- items tab ----------
-  // Each group's rows, alphabetical: listed names map to their observed blueprint, or a placeholder
-  // if that blueprint hasn't dropped yet. Other holds everything else.
+  // Each group's rows, A-Z: listed names map to their observed blueprint, or a placeholder if that
+  // blueprint hasn't dropped yet. Other holds everything else.
   function sectionRows(section) {
-    const byName = new Map();
-    for (const it of itemIndex.values()) if (inCatalog(it)) byName.set(normName(it.name), it);
+    const seen = new Map(); // normalized name -> observed catalog blueprint
+    for (const it of itemIndex.values()) if (inCatalog(it)) seen.set(normName(it.name), it);
     const alpha = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
       || isBlueprint(b.id) - isBlueprint(a.id);
     return section.groups.map(g => {
       const rows = g.names
-        ? [...new Map(g.names.map(n => [normName(n), byName.get(normName(n)) || { id: null, name: n }])).values()]
+        ? [...new Map(g.names.map(n => [normName(n), seen.get(normName(n)) || { id: null, name: n }])).values()]
         : [...itemIndex.values()].filter(it => !inCatalog(it));
       return { title: g.title, rows: rows.sort(alpha) };
     });
@@ -556,7 +557,8 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     }
   });
 
-  // ---------- drops tab ----------
+  // ---------- drop rates tab ----------
+  // Included sessions, limited to the chosen account.
   function included() {
     const src = $('#dSource').value;
     return sessions.filter(s => (!src || s.source === src) && status(s).included);
@@ -564,6 +566,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   $('#dDungeon').addEventListener('change', () => { $('#dLevel').value = ''; renderDrops(); });
   ['#dSource', '#dLevel', '#dSearch'].forEach(s => $(s).addEventListener('input', renderDrops));
 
+  // Totals per item across the given sessions; perRun = total amount / total runs.
   function aggregate(list) {
     const items = new Map(); let runs = 0;
     for (const s of list) {
@@ -586,10 +589,10 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 
   function renderDrops() {
     if (!sessions.length) return;
-    options('#dSource', sourceList(), 'All accounts');
+    fillSelect('#dSource', sourceList(), 'All accounts');
     const inc = included();
-    options('#dDungeon', dungeonList(inc), null);
-    options('#dLevel', [['', 'Compare all levels'], ...levelList(inc, $('#dDungeon').value)], null);
+    fillSelect('#dDungeon', dungeonList(inc), null);
+    fillSelect('#dLevel', [['', 'Compare all levels'], ...levelList(inc, $('#dDungeon').value)], null);
 
     const dg = $('#dDungeon').value, lv = $('#dLevel').value;
     const pool = inc.filter(s => s.dungeonId === dg);
@@ -605,6 +608,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     renderChart();
   }
 
+  // One level: rate columns per item.
   function renderLevel(list) {
     const ag = aggregate(list);
     const hours = Math.max(list.reduce((a, s) => a + s.active, 0) / 3600, 1e-9);
@@ -620,7 +624,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
       { key: 'hrsPer', label: 'Active hrs per 1', num: true, get: a => a.total ? hours / a.total : Infinity }
     ];
     if (!cols.some(c => c.key === dropSort.key)) dropSort = { key: 'perRun', dir: -1 };
-    head('#dropTable', cols, dropSort, renderDrops);
+    renderHead('#dropTable', cols, dropSort, renderDrops);
     const rows = sortBy([...ag.items.values()].filter(itemFilter), cols, dropSort);
     if (!rows.some(a => a.id === selectedItem)) selectedItem = rows[0]?.id ?? null;
     const max = Math.max(...rows.map(a => a.perRun), 1e-9);
@@ -633,6 +637,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
       <td class="num">${fmtRate(hours / a.total)}</td></tr>`).join('') || '<tr><td class="muted">No items match.</td></tr>';
   }
 
+  // All levels: one drop-rate column per level.
   function renderCompare(list) {
     const levels = [...new Set(list.map(s => s.level))].sort((a, b) => a - b);
     const per = new Map(levels.map(l => [l, aggregate(list.filter(s => s.level === l))]));
@@ -645,7 +650,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     const cols = [{ key: 'name', label: 'Item', get: a => a.name },
       ...levels.map(l => ({ key: 'L' + l, label: `Lvl ${l} drop rate`, num: true, get: a => a.by[l]?.perRun ?? 0 }))];
     if (!cols.some(c => c.key === dropSort.key)) dropSort = { key: cols[cols.length - 1].key, dir: -1 };
-    head('#dropTable', cols, dropSort, renderDrops);
+    renderHead('#dropTable', cols, dropSort, renderDrops);
     const rows = sortBy([...all.values()].filter(itemFilter), cols, dropSort);
     if (!rows.some(a => a.id === selectedItem)) selectedItem = rows[0]?.id ?? null;
     $('#dropTable tbody').innerHTML = rows.map(a => `<tr data-item="${esc(a.id)}" class="${a.id === selectedItem ? 'selected' : ''}">
@@ -773,7 +778,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     dt.querySelector('tbody').innerHTML = pts.slice().reverse().map(p => `<tr><td>${fmtDate(p.t)}</td><td>${esc(srcLabel(p.s.source))}</td><td>${esc(p.s.char)}</td><td class="num">${p.s.level}</td><td class="num">${p.s.runCount}</td><td class="num">${fmt(p.s.loot.get(selectedItem)?.amount || 0)}</td><td class="num">${fmtPct(p.own)}</td><td class="num">${fmtPct(p.cum)}</td><td class="num">${fmtPct(p.ma)}</td></tr>`).join('');
   }
 
-  // ---------- tabs, files ----------
+  // ---------- tabs and files ----------
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
     document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('active', x === b));
     for (const t of ['exports', 'sessions', 'items', 'drops']) $('#tab-' + t).classList.toggle('hidden', b.dataset.tab !== t);
@@ -781,15 +786,9 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   });
   $('#openBtn').onclick = () => $('#fileInput').click();
   $('#fileInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
-  let dragDepth = 0;
-  document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
-  document.addEventListener('dragover', e => e.preventDefault());
-  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
-  document.addEventListener('drop', e => {
-    e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
-    const files = [...e.dataTransfer.files].filter(f => /\.json$/i.test(f.name) || f.type.includes('json'));
-    if (files.length) addFiles(files);
-  });
+  onJsonDrop(addFiles);
+
+  // ---------- saving and loading selections ----------
 
   $('#exportSel').onclick = () => {
     const blob = new Blob([JSON.stringify({ format: 'dune-drops.selections', version: 3, overrides, excludedItems: [...excludedItems] }, null, 2)], { type: 'application/json' });
@@ -802,8 +801,8 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     try {
       const d = JSON.parse(await f.text());
       if (d.format !== 'dune-drops.selections') throw 0;
-      // Merge, so selections saved from several people's pages can be combined.
-      // Only exclusions matter now; older files may also hold explicit includes.
+      // Merge, so selections saved from several people's pages can be combined. Only exclusions are
+      // kept; older files may also hold explicit includes.
       for (const [id, v] of Object.entries(d.overrides || {})) if (v === false) overrides[id] = false;
       for (const id of d.excludedItems || []) excludedItems.add(id);
       store.set(LS_OVR, overrides); store.set(LS_ITEMS, [...excludedItems]);
@@ -811,7 +810,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     } catch { alert('That is not a selections file saved from this page.'); }
   };
 
-  // Restore exports added in earlier visits.
+  // ---------- start: restore exports added in earlier visits ----------
   (async () => {
     const ok = await idb.open();
     $('#storeNote').textContent = ok ? 'Exports are remembered in this browser until you remove them.' : 'This browser blocked local storage, so exports must be added again after reloading.';

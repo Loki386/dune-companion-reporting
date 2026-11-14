@@ -51,8 +51,8 @@ Every item seen across all loaded sessions, in three sections:
 
 | Section | Contents |
 | --- | --- |
-| Augments | Augment blueprints, grouped by in-game category (Garment, Generic, Melee and Ranged Weapon Augmentations) |
-| Blueprints | Weapon, armor and accessory blueprints |
+| Augments | Augment blueprints, grouped by the item catalog's augment groups (Garment, Melee Weapon and Ranged Weapon) |
+| Blueprints | Weapon, armor and utility blueprints (T6: Armor, Utility and Weapons) |
 | Other | Everything else, including crafted items that share a name with a blueprint, resources and currencies |
 
 Untick an item to leave it out of the drop rates. The Augments and Blueprints lists and their groups come from the master item catalog (see [Item catalog](#item-catalog)).
@@ -108,18 +108,18 @@ Everything is remembered in the browser.
 
 The table adds permits up across the selected characters and shows:
 
-- **Tier:** S, A, B or C, from the [item catalog](#item-catalog).
-- **Category:** the item's group from the item catalog, such as Ranged Weapon Augmentations or Weapons. Other uniques use the export's group, such as Steel Products. An augment or blueprint missing from the catalog is marked *not in catalog*.
+- **Rank:** S, A, B or C, from the [item catalog](#item-catalog).
+- **Category:** the item's group from the item catalog, such as Augments: Ranged Weapon or T6: Weapons. Other uniques use the export's group, renamed by the [category overrides](#item-catalog), such as T3: Steel Products. An augment or blueprint missing from the catalog is marked *not in catalog*.
 - **Held by:** which characters hold permits for the item. Only shown once more than one character is loaded.
 - **G0 to G5:** permits held at each grade. G0 is ungraded, which covers most uniques. A blank cell means the item can't be crafted at that grade, and ∞ means unlimited.
 - **Total:** permits across all grades.
 
-**Filters:** Character, Type, Category, Tier and Grade are multi-select dropdowns. Tick several options in one filter to show items that match any of them; **All** and **Clear** in each dropdown reset it.
+**Filters:** Character, Type, Category, Rank and Grade are multi-select dropdowns. Tick several options in one filter to show items that match any of them; **All** and **Clear** in each dropdown reset it.
 
 - **Character:** which characters' permits to add up. Only appears once more than one character is loaded.
 - **Type:** augments, blueprints (uniques that are in the item catalog's blueprint lists) or uniques. Only appears once more than one type is loaded.
-- **Category:** the categories shown in the table.
-- **Tier:** S, A, B, C or untiered.
+- **Category:** the categories shown in the table. Untagged categories such as Augments come first, then T6 down to T1, A–Z within each tier. Sorting by the Category column uses the same order.
+- **Rank:** S, A, B, C or unranked.
 - **Grade:** hides items that can't be crafted at any chosen grade, highlights those grade columns, and makes the totals count only those grades.
 - **Name search.**
 - **Only with permits.**
@@ -134,21 +134,39 @@ Click any column heading to sort.
 ```js
 window.ITEM_CATALOG = {
   augments: {
-    "Garment Augmentations": { "Blade-warding Weave": "S", ... },
+    "Augments: Garment": { "Blade-warding Weave": "S", ... },
     ...
   },
   blueprints: {
-    "Weapons": { ... }, "Armor": { ... }, "Accessories": { ... }
+    "T6: Weapons": { ... }, "T6: Armor": { ... }, "T6: Utility": { ... }
   }
+};
+
+window.CATEGORY_OVERRIDES = {
+  "Copper Products": "T1: Copper Products",
+  ...
 };
 ```
 
 - **Kind:** `augments` or `blueprints`.
-- **Group:** augment groups are the in-game `groupName` from the augments export; blueprint groups are Weapons, Armor and Accessories.
-- **Tier:** `"S"`, `"A"`, `"B"`, `"C"`, or `""` for untiered. Tiers came from the *Dune Awakening* tier-list spreadsheet.
+- **Category:** the name shown on both pages, such as `Augments: Garment` or `T6: Weapons`. A `T<n>:` prefix sets the category's tier for sorting.
+- **Rank:** `"S"`, `"A"`, `"B"`, `"C"`, or `""` for unranked. Ranks came from the *Dune Awakening* tier-list spreadsheet.
 - **Names:** matched to exports without regard to capitals.
 
-To add an item, change its group, or re-rank it, edit this file.
+To add an item, change its category, or re-rank it, edit `ITEM_CATALOG`.
+
+**Category overrides** rename the export's own groups for items the catalog doesn't list, which covers most uniques. You don't have to add every item to the catalog. The "Products" groups are mapped to tiers:
+
+| Export group | Shown as |
+| --- | --- |
+| Copper Products | T1: Copper Products |
+| Iron Products | T2: Iron Products |
+| Steel Products | T3: Steel Products |
+| Aluminum Products | T4: Aluminum Products |
+| Duraluminum Products | T5: Duraluminum Products |
+| Plastanium Products | T6: Plastanium Products |
+
+Catalog blueprints are also T6: Armor, T6: Utility and T6: Weapons. Groups with no override keep the export's name.
 
 ## Saving your choices
 
@@ -163,4 +181,5 @@ Use **Save selections** to write your session and item exclusions to a file. Use
 | `index.html` | Home page: switches between the two tools with tabs |
 | `drop-rates.html` | The Drop rates page |
 | `permits.html` | The Permits page |
-| `item-catalog.js` | Master item catalog: kind, group and tier for every augment and blueprint |
+| `common.js` | Helpers shared by both pages |
+| `item-catalog.js` | Master item catalog: kind, category and rank for every augment and blueprint, plus category overrides |

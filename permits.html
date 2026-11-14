@@ -49,12 +49,12 @@ th.focus, td.focus { background: var(--accent-soft); }
 #table tbody tr:hover td { background: var(--accent-soft); }
 td.zero { color: var(--muted); }
 td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--muted); }
-.tier { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; }
-.tier.S { background: var(--ok-soft); color: var(--ok); }
-.tier.A { background: var(--accent-soft); color: var(--accent); }
-.tier.B { background: var(--warn-soft); color: var(--warn); }
-.tier.C { background: var(--bad-soft); color: var(--bad); }
-.tier.none { color: var(--muted); font-weight: 400; }
+.rank { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.rank.S { background: var(--ok-soft); color: var(--ok); }
+.rank.A { background: var(--accent-soft); color: var(--accent); }
+.rank.B { background: var(--warn-soft); color: var(--warn); }
+.rank.C { background: var(--bad-soft); color: var(--bad); }
+.rank.none { color: var(--muted); font-weight: 400; }
 #filesPanel { padding: 0; }
 #filesPanel > summary { padding: 10px 12px; cursor: pointer; }
 #filesPanel table th { cursor: default; position: static; }
@@ -115,7 +115,7 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
       <details class="ms" id="fChar" data-key="char" data-label="Character"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fType" data-key="type" data-label="Type"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fGroup" data-key="group" data-label="Category"><summary></summary><div class="ms-menu"></div></details>
-      <details class="ms" id="fTier" data-key="tier" data-label="Tier"><summary></summary><div class="ms-menu"></div></details>
+      <details class="ms" id="fRank" data-key="rank" data-label="Rank"><summary></summary><div class="ms-menu"></div></details>
       <details class="ms" id="fGrade" data-key="grade" data-label="Grade"><summary></summary><div class="ms-menu"></div></details>
       <label><input type="search" id="fSearch" placeholder="Search names…"></label>
       <label><input type="checkbox" id="fOwned"> Only with permits</label>
@@ -123,60 +123,65 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
     </div>
     <div class="stats" id="stats"></div>
     <div class="table-wrap"><table id="table"><thead></thead><tbody></tbody></table></div>
-    <p class="muted">Permits are added up across the selected characters. Each grade column shows how many permits are held for that grade (G0 is ungraded); ∞ means unlimited. A blank cell means the item can't be crafted at that grade. Choosing grades hides items that can't be crafted at any of them, and the totals then count only those grades. Ticking several options in one filter shows items that match any of them. Category and tier come from <code>item-catalog.js</code>; augments or blueprints marked “not in catalog” use the export's own category until you add them there.</p>
+    <p class="muted">Permits are added up across the selected characters. Each grade column shows how many permits are held for that grade (G0 is ungraded); ∞ means unlimited. A blank cell means the item can't be crafted at that grade. Choosing grades hides items that can't be crafted at any of them, and the totals then count only those grades. Ticking several options in one filter shows items that match any of them. Category and rank come from <code>item-catalog.js</code>; augments or blueprints marked “not in catalog” use the export's own category until you add them there.</p>
   </div>
 </main>
 
+<script src="common.js"></script>
 <script src="item-catalog.js"></script>
 <script>
 (() => {
-  // Inside the home page the tabs replace the link to the other page.
-  if (window.self !== window.top) document.querySelectorAll('.home-link').forEach(a => a.classList.add('hidden'));
-  const $ = s => document.querySelector(s);
-  const LS_FILES = 'dune-permits:files', LS_OLD = 'dune-permits:exports', LS_VIEW = 'dune-permits:view', LS_CHARS = 'dune-permits:characters';
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
-    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
-    del(k) { try { localStorage.removeItem(k); } catch {} }
-  };
-  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const { $, esc, plural, fmtDate, normName, byName, byCategory, store, hideHomeLinkInFrame, onJsonDrop } = window.Common;
   const fmt = n => n.toLocaleString();
-  const fmtDate = ms => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-  const normName = n => String(n).replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
-  const TIERS = ['S', 'A', 'B', 'C'];
+  hideHomeLinkInFrame();
+
+  const LS_FILES = 'dune-permits:files', LS_CHARS = 'dune-permits:characters', LS_VIEW = 'dune-permits:view';
+  const LS_LEGACY = 'dune-permits:exports'; // Older versions kept one export per type.
+
+  const RANKS = ['S', 'A', 'B', 'C'];
+  const rankOrder = r => r ? RANKS.indexOf(r) : RANKS.length; // Unranked sorts last.
   const UNASSIGNED = 'Unassigned';
-  // The master catalog is the source of truth for kind, group and tier; the export's own groupName is only
-  // a fallback for items the catalog doesn't list yet.
-  const catalog = new Map();
+  const typeLabel = t => ({ augments: 'Augments', blueprints: 'Blueprints', uniques: 'Uniques' })[t] || t.charAt(0).toUpperCase() + t.slice(1);
+
+  // ---------- item catalog (item-catalog.js) ----------
+  // The catalog is the source of truth for an item's kind, category and rank. Items it doesn't list keep the
+  // export's own group, renamed by CATEGORY_OVERRIDES where one is defined.
+  const catalog = new Map(); // normalized name -> { kind, group, rank }
   for (const [kind, groups] of Object.entries(window.ITEM_CATALOG || {}))
     for (const [group, items] of Object.entries(groups))
-      for (const [name, tier] of Object.entries(items))
-        if (!catalog.has(normName(name))) catalog.set(normName(name), { kind, group, tier: TIERS.includes(tier) ? tier : '' });
+      for (const [name, rank] of Object.entries(items))
+        if (!catalog.has(normName(name))) catalog.set(normName(name), { kind, group, rank: RANKS.includes(rank) ? rank : '' });
   const catalogKinds = new Set(Object.keys(window.ITEM_CATALOG || {}));
-  const typeLabel = t => ({ augments: 'Augments', blueprints: 'Blueprints', uniques: 'Uniques' })[t] || t.charAt(0).toUpperCase() + t.slice(1);
-  const charOf = f => f.character.trim() || UNASSIGNED;
+  const groupOverrides = new Map(Object.entries(window.CATEGORY_OVERRIDES || {}).map(([from, to]) => [normName(from), to]));
+  const exportGroup = g => groupOverrides.get(normName(g)) || g;
 
+  // ---------- saved state ----------
   // One entry per loaded file:
   // { key, fileName, exportType, exportedAt, character, items: [{ rid, name, group, grades, permits: { grade: count, or null for unlimited } }] }
   let files = store.get(LS_FILES, null);
-  if (!files) { // Older versions kept one export per type.
-    files = Object.values(store.get(LS_OLD, {})).map(e => ({ ...e, key: `${e.fileName}|${e.exportedAt}`, character: '' }));
+  if (!files) {
+    files = Object.values(store.get(LS_LEGACY, {})).map(e => ({ ...e, key: `${e.fileName}|${e.exportedAt}`, character: '' }));
     if (files.length) store.set(LS_FILES, files);
-    store.del(LS_OLD);
+    store.del(LS_LEGACY);
   }
-  // The managed character list; seeded from names already on files.
-  const byName = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' });
+  // The managed character list, seeded from names already on files.
   let characters = store.get(LS_CHARS, null) || [...new Set(files.map(f => f.character.trim()).filter(Boolean))].sort(byName);
-  const save = () => {
+  const charOf = f => f.character.trim() || UNASSIGNED;
+
+  function save() {
     const ok = store.set(LS_FILES, files) & store.set(LS_CHARS, characters);
     if (!ok) $('#fileInfo').title = 'This browser blocked local storage, so exports must be loaded again after reloading.';
-  };
+  }
 
-  const view = Object.assign({ search: '', owned: false, noInf: false, sort: { key: 'tier', dir: 1 } }, store.get(LS_VIEW, {}));
-  // Multi-select filters: each holds the ticked values as strings; empty means no filter.
-  for (const k of ['char', 'type', 'group', 'tier', 'grade']) view[k] = Array.isArray(view[k]) ? view[k].map(String) : view[k] ? [String(view[k])] : [];
+  // Filter and sort settings. The multi-select filters hold ticked values as strings; empty means no filter.
+  const FILTERS = ['char', 'type', 'group', 'rank', 'grade'];
+  const view = Object.assign({ search: '', owned: false, noInf: false, sort: { key: 'rank', dir: 1 } }, store.get(LS_VIEW, {}));
+  if (view.tier !== undefined) { view.rank ??= view.tier; delete view.tier; } // Saved before "tier" was renamed "rank".
+  if (view.sort.key === 'tier') view.sort.key = 'rank';
+  for (const k of FILTERS) view[k] = Array.isArray(view[k]) ? view[k].map(String) : view[k] ? [String(view[k])] : [];
   const any = (key, v) => !view[key].length || view[key].includes(v);
 
+  // ---------- loading exports ----------
   function parse(text, fileName) {
     let d;
     try { d = JSON.parse(text); } catch { alert(`${fileName}: not valid JSON.`); return null; }
@@ -187,7 +192,7 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
         : `${fileName}: no data.nodes list found. Is this an augments or uniques export?`);
       return null;
     }
-    const permits = new Map();
+    const permits = new Map(); // recipeId -> { grade: count, or null for unlimited }
     for (const r of recipes) {
       const m = permits.get(r.recipeId) || {};
       m[r.grade] = r.isLimitedUse === false || m[r.grade] === null ? null : (m[r.grade] || 0) + (r.permitCount || 0);
@@ -208,14 +213,15 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
       const p = parse(await f.text(), f.name);
       if (!p) continue;
       const i = files.findIndex(x => x.key === p.key);
-      if (i >= 0) p.character = files[i].character;
-      else if (characters.length === 1) p.character = characters[0]; // Only one character: assign it straight away.
-      if (i >= 0) files[i] = p; else files.push(p);
+      if (i >= 0) { p.character = files[i].character; files[i] = p; continue; } // Same file again: keep its character.
+      if (characters.length === 1) p.character = characters[0];                 // Only one character: assign it straight away.
+      files.push(p);
     }
     save();
     render();
   }
 
+  // ---------- combining ----------
   // Per type and character only the newest export counts, so re-exports don't double up.
   function countedKeys() {
     const newest = new Map();
@@ -226,8 +232,8 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
     return new Set([...newest.values()].map(f => f.key));
   }
 
-  // Permits for the given grades (all when empty); Infinity when any counted grade is unlimited.
-  const countPermits = (permits, grades) => {
+  // Permits for the given grades (all grades when empty); Infinity when any counted grade is unlimited.
+  function countPermits(permits, grades) {
     let n = 0;
     for (const g of grades.length ? grades : Object.keys(permits).map(Number)) {
       if (!(g in permits)) continue;
@@ -235,56 +241,66 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
       n += permits[g];
     }
     return n;
-  };
+  }
 
-  // Merges the selected characters' exports into one row per item.
+  // Merges the given exports into one row per item, keeping each character's permits for "Held by".
   function combine(sources) {
     const rows = new Map();
     for (const f of sources) for (const it of f.items) {
-      const c = catalog.get(normName(it.name));
+      const listed = catalog.get(normName(it.name));
       const key = `${f.exportType}|${it.rid || normName(it.name)}`;
-      let r = rows.get(key);
-      if (!r) rows.set(key, r = {
-        name: it.name, type: c?.kind || f.exportType, group: c?.group || it.group, tier: c?.tier || '',
-        unlisted: !c && catalogKinds.has(f.exportType), grades: new Set(), permits: {}, holders: []
+      let row = rows.get(key);
+      if (!row) rows.set(key, row = {
+        name: it.name,
+        type: listed?.kind || f.exportType,
+        group: listed?.group || exportGroup(it.group),
+        rank: listed?.rank || '',
+        unlisted: !listed && catalogKinds.has(f.exportType),
+        grades: new Set(), permits: {}, holders: []
       });
-      it.grades.forEach(g => r.grades.add(g));
+      it.grades.forEach(g => row.grades.add(g));
       for (const [g, v] of Object.entries(it.permits))
-        r.permits[g] = v === null || r.permits[g] === null ? null : (r.permits[g] || 0) + v;
-      r.holders.push({ char: charOf(f), permits: it.permits });
+        row.permits[g] = v === null || row.permits[g] === null ? null : (row.permits[g] || 0) + v;
+      row.holders.push({ char: charOf(f), permits: it.permits });
     }
     return [...rows.values()];
   }
 
-  // Fills a checkbox dropdown and drops ticked values that are no longer offered.
-  function multi(sel, list) {
+  // ---------- rendering ----------
+  // Fills a multi-select dropdown and drops ticked values that are no longer offered.
+  function multiSelect(sel, options) {
     const el = $(sel), key = el.dataset.key;
-    view[key] = view[key].filter(v => list.some(([o]) => String(o) === v));
+    view[key] = view[key].filter(v => options.some(([o]) => String(o) === v));
     const picked = new Set(view[key]);
-    el.querySelector('.ms-menu').innerHTML = `<div class="ms-actions"><button type="button" data-ms="all">All</button><button type="button" data-ms="none">Clear</button></div>` +
-      list.map(([v, l]) => `<label><input type="checkbox" value="${esc(v)}" ${picked.has(String(v)) ? 'checked' : ''}> ${esc(l)}</label>`).join('');
-    const names = list.filter(([v]) => picked.has(String(v))).map(([, l]) => l);
-    el.querySelector('summary').innerHTML = `${esc(el.dataset.label)}: <b>${!names.length || names.length === list.length ? 'All' : names.length === 1 ? esc(names[0]) : `${names.length} selected`}</b>`;
+    el.querySelector('.ms-menu').innerHTML =
+      '<div class="ms-actions"><button type="button" data-ms="all">All</button><button type="button" data-ms="none">Clear</button></div>' +
+      options.map(([v, label]) => `<label><input type="checkbox" value="${esc(v)}" ${picked.has(String(v)) ? 'checked' : ''}> ${esc(label)}</label>`).join('');
+    const names = options.filter(([v]) => picked.has(String(v))).map(([, label]) => label);
+    const summary = !names.length || names.length === options.length ? 'All' : names.length === 1 ? esc(names[0]) : `${names.length} selected`;
+    el.querySelector('summary').innerHTML = `${esc(el.dataset.label)}: <b>${summary}</b>`;
   }
 
   function renderFiles(counted) {
     const usage = c => files.filter(f => f.character === c).length;
-    $('#charChips').innerHTML = characters.map(c => `<span class="chip" title="${usage(c)} file${usage(c) === 1 ? '' : 's'}">${esc(c)}<button type="button" data-delchar="${esc(c)}" aria-label="Remove ${esc(c)}">×</button></span>`).join('')
+    $('#charChips').innerHTML = characters.map(c =>
+      `<span class="chip" title="${plural(usage(c), 'file')}">${esc(c)}<button type="button" data-delchar="${esc(c)}" aria-label="Remove ${esc(c)}">×</button></span>`).join('')
       || '<span class="muted">None yet. Add each character once, then pick one for each file below.</span>';
-    const options = c => `<option value="">${UNASSIGNED}</option>` + characters.map(n => `<option value="${esc(n)}" ${n === c ? 'selected' : ''}>${esc(n)}</option>`).join('');
-    const sorted = [...files].sort((a, b) => charOf(a).localeCompare(charOf(b)) || a.exportType.localeCompare(b.exportType) || b.exportedAt - a.exportedAt);
+
+    const charOptions = current => `<option value="">${UNASSIGNED}</option>` +
+      characters.map(c => `<option value="${esc(c)}" ${c === current ? 'selected' : ''}>${esc(c)}</option>`).join('');
+    const sorted = [...files].sort((a, b) => byName(charOf(a), charOf(b)) || a.exportType.localeCompare(b.exportType) || b.exportedAt - a.exportedAt);
     $('#filesTable tbody').innerHTML = sorted.map(f => {
-      const live = counted.has(f.key);
+      const isCounted = counted.has(f.key);
       const total = f.items.reduce((a, it) => a + countPermits(it.permits, []), 0);
-      return `<tr data-key="${esc(f.key)}" class="${live ? '' : 'superseded'}" title="${live ? '' : `Not counted: a newer ${esc(typeLabel(f.exportType).toLowerCase())} export has the same character`}">
+      const why = isCounted ? '' : `Not counted: a newer ${typeLabel(f.exportType).toLowerCase()} export has the same character`;
+      return `<tr data-key="${esc(f.key)}" class="${isCounted ? '' : 'superseded'}" title="${esc(why)}">
         <td>${esc(f.fileName)}</td><td>${esc(typeLabel(f.exportType))}</td>
         <td>${f.exportedAt ? fmtDate(f.exportedAt) : '?'}</td><td class="num">${fmt(f.items.length)}</td>
         <td class="num">${total === Infinity ? '∞' : fmt(total)}</td>
-        <td><select aria-label="Character for ${esc(f.fileName)}">${options(f.character)}</select>${live ? '' : ' <span class="muted">not counted</span>'}</td>
+        <td><select aria-label="Character for ${esc(f.fileName)}">${charOptions(f.character)}</select>${isCounted ? '' : ' <span class="muted">not counted</span>'}</td>
         <td><button type="button" data-remove>Remove</button></td></tr>`;
     }).join('');
-    const nChars = new Set(files.map(charOf)).size;
-    $('#filesSummary').textContent = `${files.length} file${files.length === 1 ? '' : 's'} · ${nChars} character${nChars === 1 ? '' : 's'}`;
+    $('#filesSummary').textContent = `${plural(files.length, 'file')} · ${plural(new Set(files.map(charOf)).size, 'character')}`;
   }
 
   function render(restore) {
@@ -295,23 +311,25 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
 
     const counted = countedKeys();
     renderFiles(counted);
-    const live = files.filter(f => counted.has(f.key));
-    const chars = [...new Set(live.map(charOf))].sort((a, b) => (a === UNASSIGNED) - (b === UNASSIGNED) || a.localeCompare(b));
-    $('#fileInfo').textContent = `${files.length} export${files.length === 1 ? '' : 's'} · ${chars.length} character${chars.length === 1 ? '' : 's'}`;
-    $('#fChar').classList.toggle('hidden', chars.length < 2);
-    multi('#fChar', chars.map(c => [c, c]));
+    const countedFiles = files.filter(f => counted.has(f.key));
+    const chars = [...new Set(countedFiles.map(charOf))].sort((a, b) => (a === UNASSIGNED) - (b === UNASSIGNED) || byName(a, b));
+    $('#fileInfo').textContent = `${plural(files.length, 'export')} · ${plural(chars.length, 'character')}`;
 
-    const all = combine(live.filter(f => any('char', charOf(f))));
+    // Filter options are built from what's loaded; Character and Type only show when there's a choice to make.
+    $('#fChar').classList.toggle('hidden', chars.length < 2);
+    multiSelect('#fChar', chars.map(c => [c, c]));
+    const all = combine(countedFiles.filter(f => any('char', charOf(f))));
     const kinds = [...new Set(all.map(i => i.type))].sort();
     $('#fType').classList.toggle('hidden', kinds.length < 2);
-    multi('#fType', kinds.map(t => [t, typeLabel(t)]));
-    const pool = all.filter(i => any('type', i.type));
-    multi('#fGroup', [...new Set(pool.map(i => i.group))].filter(Boolean).sort().map(g => [g, g]));
-    multi('#fTier', [...TIERS.map(t => [t, `${t}-Tier`]), ['none', 'Untiered']]);
+    multiSelect('#fType', kinds.map(t => [t, typeLabel(t)]));
+    const groups = [...new Set(all.filter(i => any('type', i.type)).map(i => i.group))].filter(Boolean).sort(byCategory);
+    multiSelect('#fGroup', groups.map(g => [g, g]));
+    multiSelect('#fRank', [...RANKS.map(r => [r, `${r}-Rank`]), ['none', 'Unranked']]);
     const seen = all.flatMap(i => [...i.grades, ...Object.keys(i.permits).map(Number)]);
     const lo = Math.min(1, ...seen), hi = Math.max(5, ...seen);
     const gradeList = Array.from({ length: hi - lo + 1 }, (_, i) => lo + i);
-    multi('#fGrade', gradeList.map(g => [g, g === 0 ? 'Grade 0 (ungraded)' : `Grade ${g}`]));
+    multiSelect('#fGrade', gradeList.map(g => [g, g === 0 ? 'Grade 0 (ungraded)' : `Grade ${g}`]));
+
     if (restore) { $('#fSearch').value = view.search; $('#fOwned').checked = view.owned; $('#fNoInf').checked = view.noInf; }
     renderTable(all, gradeList, chars.length > 1);
   }
@@ -320,53 +338,58 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
     const q = $('#fSearch').value.trim().toLowerCase(), owned = $('#fOwned').checked, noInf = $('#fNoInf').checked;
     Object.assign(view, { search: $('#fSearch').value, owned, noInf });
     store.set(LS_VIEW, view);
+
     const grades = view.grade.map(Number).sort((a, b) => a - b), gradeSet = new Set(grades);
     const gradeTag = grades.length ? ` (${grades.map(g => 'G' + g).join(', ')})` : '';
     const count = it => countPermits(it.permits, grades);
     const holders = it => [...new Set(it.holders.filter(h => countPermits(h.permits, grades) > 0).map(h => h.char))];
 
     const rows = all.filter(it =>
-      any('type', it.type) && any('group', it.group) && any('tier', it.tier || 'none') &&
+      any('type', it.type) && any('group', it.group) && any('rank', it.rank || 'none') &&
       (!grades.length || grades.some(g => it.grades.has(g) || g in it.permits)) &&
       (!q || it.name.toLowerCase().includes(q)) &&
       (!owned || count(it) > 0) &&
       (!noInf || count(it) !== Infinity));
 
-    const tierRank = t => t ? TIERS.indexOf(t) : TIERS.length;
+    // Columns; `get` returns the sort value.
+    const categoryOrder = new Map([...new Set(all.map(i => i.group))].sort(byCategory).map((g, i) => [g, i]));
     const cols = [
       { key: 'name', label: 'Name', get: it => it.name.toLowerCase() },
-      { key: 'tier', label: 'Tier', get: it => tierRank(it.tier) },
-      { key: 'group', label: 'Category', get: it => it.group },
+      { key: 'rank', label: 'Rank', get: it => rankOrder(it.rank) },
+      { key: 'group', label: 'Category', get: it => categoryOrder.get(it.group) },
       ...(showHolders ? [{ key: 'held', label: 'Held by', get: it => holders(it).length }] : []),
-      ...gradeList.map(g => ({ key: 'g' + g, label: `G${g}`, num: true, g, get: it => it.permits[g] === null ? Infinity : it.permits[g] || 0 })),
+      ...gradeList.map(g => ({ key: 'g' + g, label: `G${g}`, num: true, grade: g, get: it => it.permits[g] === null ? Infinity : it.permits[g] || 0 })),
       { key: 'total', label: 'Total' + gradeTag, num: true, get: count }
     ];
-    if (!cols.some(c => c.key === view.sort.key)) view.sort = { key: 'tier', dir: 1 };
-    const sc = cols.find(c => c.key === view.sort.key);
+    if (!cols.some(c => c.key === view.sort.key)) view.sort = { key: 'rank', dir: 1 };
+    const sortCol = cols.find(c => c.key === view.sort.key);
     const cmp = (x, y) => typeof x === 'string' ? x.localeCompare(y) : x === y ? 0 : x < y ? -1 : 1;
-    rows.sort((a, b) => cmp(sc.get(a), sc.get(b)) * view.sort.dir || tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name));
+    rows.sort((a, b) => cmp(sortCol.get(a), sortCol.get(b)) * view.sort.dir || rankOrder(a.rank) - rankOrder(b.rank) || a.name.localeCompare(b.name));
 
-    $('#table thead').innerHTML = '<tr>' + cols.map(col =>
-      `<th data-key="${col.key}" class="${col.num ? 'num' : ''}${gradeSet.has(col.g) ? ' focus' : ''}"${col.g === 0 ? ' title="Ungraded"' : ''}>${esc(col.label)}${view.sort.key === col.key ? (view.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+    $('#table thead').innerHTML = '<tr>' + cols.map(c =>
+      `<th data-key="${c.key}" class="${c.num ? 'num' : ''}${gradeSet.has(c.grade) ? ' focus' : ''}"${c.grade === 0 ? ' title="Ungraded"' : ''}>` +
+      `${esc(c.label)}${view.sort.key === c.key ? (view.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
     $('#table thead').onclick = e => {
       const k = e.target.closest('th')?.dataset.key;
       if (!k) return;
       view.sort = view.sort.key === k ? { key: k, dir: -view.sort.dir } : { key: k, dir: cols.find(c => c.key === k).num ? -1 : 1 };
       render();
     };
-    const cell = (it, g) => {
+
+    const gradeCell = (it, g) => {
       const focus = gradeSet.has(g) ? ' focus' : '';
       if (!it.grades.has(g) && !(g in it.permits)) return `<td class="num${focus}" title="Not craftable at grade ${g}"></td>`;
       const v = it.permits[g];
       return v === null ? `<td class="num${focus}">∞</td>` : v ? `<td class="num${focus}">${fmt(v)}</td>` : `<td class="num zero${focus}">0</td>`;
     };
+    const notListed = ' <span class="rank none" title="Add this item to item-catalog.js to set its category and rank">not in catalog</span>';
     $('#table tbody').innerHTML = rows.map(it => {
       const total = count(it);
-      return `<tr><td>${esc(it.name)}${it.unlisted ? ' <span class="tier none" title="Add this item to item-catalog.js to set its category and tier">not in catalog</span>' : ''}</td>
-        <td>${it.tier ? `<span class="tier ${it.tier}">${it.tier}</span>` : '<span class="tier none">—</span>'}</td>
+      return `<tr><td>${esc(it.name)}${it.unlisted ? notListed : ''}</td>
+        <td>${it.rank ? `<span class="rank ${it.rank}">${it.rank}</span>` : '<span class="rank none">—</span>'}</td>
         <td class="muted">${esc(it.group)}</td>
         ${showHolders ? `<td class="held">${esc(holders(it).join(', '))}</td>` : ''}
-        ${gradeList.map(g => cell(it, g)).join('')}
+        ${gradeList.map(g => gradeCell(it, g)).join('')}
         <td class="num"><b>${total === Infinity ? '∞' : total ? fmt(total) : '<span class="muted">0</span>'}</b></td></tr>`;
     }).join('') || `<tr><td colspan="${cols.length}" class="muted">No items match.</td></tr>`;
 
@@ -375,21 +398,16 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
       ['Items shown', fmt(rows.length)],
       ['With permits', fmt(totals.filter(n => n > 0).length)],
       ['Permits' + gradeTag, fmt(finite.reduce((a, n) => a + n, 0)) + (finite.length < totals.length ? ' + ∞' : '')]
-    ].map(([l, v]) => `<div class="stat"><span class="muted">${l}</span><b>${v}</b></div>`).join('');
+    ].map(([label, v]) => `<div class="stat"><span class="muted">${label}</span><b>${v}</b></div>`).join('');
   }
 
-  // Loaded exports list: character names and removal.
-  $('#filesTable').addEventListener('change', e => {
-    if (!e.target.matches('select')) return;
-    files.find(x => x.key === e.target.closest('tr').dataset.key).character = e.target.value;
-    save(); render();
-  });
+  // ---------- events: characters and files ----------
   $('#charForm').addEventListener('submit', e => {
     e.preventDefault();
     const name = $('#charInput').value.replace(/\s+/g, ' ').trim();
     if (!name) return;
-    const dup = characters.find(c => byName(c, name) === 0);
-    if (dup) { alert(`${dup} is already in the list.`); return; }
+    const existing = characters.find(c => byName(c, name) === 0);
+    if (existing) { alert(`${existing} is already in the list.`); return; }
     characters = [...characters, name].sort(byName);
     $('#charInput').value = '';
     save(); render();
@@ -399,9 +417,14 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
     const name = e.target.closest('[data-delchar]')?.dataset.delchar;
     if (name == null) return;
     const used = files.filter(f => f.character === name).length;
-    if (used && !confirm(`${name} is assigned to ${used} file${used === 1 ? '' : 's'}. Remove the character and mark ${used === 1 ? 'that file' : 'those files'} Unassigned?`)) return;
+    if (used && !confirm(`${name} is assigned to ${plural(used, 'file')}. Remove the character and mark ${used === 1 ? 'that file' : 'those files'} ${UNASSIGNED}?`)) return;
     characters = characters.filter(c => c !== name);
     files.forEach(f => { if (f.character === name) f.character = ''; });
+    save(); render();
+  });
+  $('#filesTable').addEventListener('change', e => {
+    if (!e.target.matches('select')) return;
+    files.find(f => f.key === e.target.closest('tr').dataset.key).character = e.target.value;
     save(); render();
   });
   $('#filesTable').addEventListener('click', e => {
@@ -410,39 +433,34 @@ td.held { white-space: normal; min-width: 140px; max-width: 280px; color: var(--
     files = files.filter(f => f.key !== key);
     save(); render();
   });
-
-  ['#fSearch', '#fOwned', '#fNoInf'].forEach(s => $(s).addEventListener('input', () => render()));
-  document.querySelectorAll('.ms').forEach(el => {
-    const key = el.dataset.key, menu = el.querySelector('.ms-menu');
-    el.addEventListener('toggle', () => { if (el.open) document.querySelectorAll('.ms[open]').forEach(o => { if (o !== el) o.open = false; }); });
-    menu.addEventListener('change', () => { view[key] = [...menu.querySelectorAll('input:checked')].map(i => i.value); render(); });
-    menu.addEventListener('click', e => {
-      // Clicks inside the menu never count as "outside": All/Clear redraw the menu, which detaches the clicked button.
-      e.stopPropagation();
-      const act = e.target.dataset.ms;
-      if (!act) return;
-      view[key] = act === 'all' ? [...menu.querySelectorAll('input')].map(i => i.value) : [];
-      render();
-    });
-  });
-  // Close an open dropdown on a click elsewhere or Escape.
-  document.addEventListener('click', e => document.querySelectorAll('.ms[open]').forEach(o => { if (!o.contains(e.target)) o.open = false; }));
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.ms[open]').forEach(o => { o.open = false; }); });
   $('#openBtn').onclick = () => $('#fileInput').click();
   $('#fileInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
   $('#clearBtn').onclick = () => {
     if (!confirm('Remove all loaded exports from this browser?')) return;
     files = []; store.del(LS_FILES); render(); // The character list is kept for the next exports.
   };
-  let dragDepth = 0;
-  document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
-  document.addEventListener('dragover', e => e.preventDefault());
-  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
-  document.addEventListener('drop', e => {
-    e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
-    const list = [...(e.dataTransfer?.files || [])].filter(f => /\.json$/i.test(f.name));
-    if (list.length) addFiles(list);
+
+  // ---------- events: filters ----------
+  ['#fSearch', '#fOwned', '#fNoInf'].forEach(s => $(s).addEventListener('input', () => render()));
+  document.querySelectorAll('.ms').forEach(el => {
+    const key = el.dataset.key, menu = el.querySelector('.ms-menu');
+    el.addEventListener('toggle', () => { if (el.open) document.querySelectorAll('.ms[open]').forEach(o => { if (o !== el) o.open = false; }); });
+    menu.addEventListener('change', () => { view[key] = [...menu.querySelectorAll('input:checked')].map(i => i.value); render(); });
+    menu.addEventListener('click', e => {
+      // Keep clicks inside the menu from reaching the outside-click handler: All/Clear redraw the menu,
+      // which detaches the clicked button and would otherwise close the dropdown.
+      e.stopPropagation();
+      const action = e.target.dataset.ms;
+      if (!action) return;
+      view[key] = action === 'all' ? [...menu.querySelectorAll('input')].map(i => i.value) : [];
+      render();
+    });
   });
+  // Close an open dropdown on a click elsewhere or Escape.
+  document.addEventListener('click', e => document.querySelectorAll('.ms[open]').forEach(o => { if (!o.contains(e.target)) o.open = false; }));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.ms[open]').forEach(o => { o.open = false; }); });
+
+  onJsonDrop(addFiles);
 
   render(true);
 })();
