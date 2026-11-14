@@ -73,7 +73,7 @@ td.zero { color: var(--muted); }
   <h1>Dune Permits</h1>
   <span id="fileInfo" class="muted">No exports loaded</span>
   <span style="flex:1"></span>
-  <a href="index.html">Drop rates</a>
+  <a href="index.html#drop-rates" target="_top" class="home-link">Drop rates</a>
   <input type="file" id="fileInput" accept=".json,application/json" multiple class="hidden">
   <button id="openBtn">Load exports…</button>
   <button id="clearBtn" class="hidden">Clear</button>
@@ -102,6 +102,8 @@ td.zero { color: var(--muted); }
 <script src="item-catalog.js"></script>
 <script>
 (() => {
+  // Inside the home page the tabs replace the link to the other page.
+  if (window.self !== window.top) document.querySelectorAll('.home-link').forEach(a => a.classList.add('hidden'));
   const $ = s => document.querySelector(s);
   const LS_DATA = 'dune-permits:exports', LS_VIEW = 'dune-permits:view';
   const store = {
@@ -280,6 +282,8 @@ td.zero { color: var(--muted); }
     el.addEventListener('toggle', () => { if (el.open) document.querySelectorAll('.ms[open]').forEach(o => { if (o !== el) o.open = false; }); });
     menu.addEventListener('change', () => { view[key] = [...menu.querySelectorAll('input:checked')].map(i => i.value); render(); });
     menu.addEventListener('click', e => {
+      // Clicks inside the menu never count as "outside": All/Clear redraw the menu, which detaches the clicked button.
+      e.stopPropagation();
       const act = e.target.dataset.ms;
       if (!act) return;
       view[key] = act === 'all' ? [...menu.querySelectorAll('input')].map(i => i.value) : [];
