@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dune Permits</title>
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --text: #1d1c1a; --muted: #6b6862; --border: #e2dfd8;
+  --accent: #b5651d; --accent-soft: #f3e4d5; --ok: #2f7d4f; --ok-soft: #e1f1e7;
+  --bad: #a33a2b; --bad-soft: #f6e1dd; --warn: #8a6d1a; --warn-soft: #f5edd2;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161513; --panel: #201f1c; --text: #ece9e2; --muted: #a29e95; --border: #34322d;
+    --accent: #e0954f; --accent-soft: #3a2c1e; --ok: #6cc08f; --ok-soft: #1c3226;
+    --bad: #e2826f; --bad-soft: #3b211c; --warn: #d8b85a; --warn-soft: #352d16;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161513; --panel: #201f1c; --text: #ece9e2; --muted: #a29e95; --border: #34322d;
+  --accent: #e0954f; --accent-soft: #3a2c1e; --ok: #6cc08f; --ok-soft: #1c3226;
+  --bad: #e2826f; --bad-soft: #3b211c; --warn: #d8b85a; --warn-soft: #352d16;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { padding: 16px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+h1 { font-size: 18px; margin: 0 12px 0 0; }
+main { padding: 16px; max-width: 1500px; margin: 0 auto; }
+a { color: var(--accent); }
+button, select, input[type=search] { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; }
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+.muted { color: var(--muted); }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+label { display: inline-flex; gap: 6px; align-items: center; }
+#drop { border: 2px dashed var(--border); border-radius: 10px; padding: 48px 16px; text-align: center; background: var(--panel); }
+body.dragging #drop { border-color: var(--accent); background: var(--accent-soft); }
+.stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.stat { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; min-width: 120px; }
+.stat b { display: block; font-size: 20px; }
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; cursor: pointer; user-select: none; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th.focus, td.focus { background: var(--accent-soft); }
+tbody tr:hover td { background: var(--accent-soft); }
+td.zero { color: var(--muted); }
+.tier { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.tier.S { background: var(--ok-soft); color: var(--ok); }
+.tier.A { background: var(--accent-soft); color: var(--accent); }
+.tier.B { background: var(--warn-soft); color: var(--warn); }
+.tier.C { background: var(--bad-soft); color: var(--bad); }
+.tier.none { color: var(--muted); font-weight: 400; }
+.ms { position: relative; }
+.ms summary { list-style: none; cursor: pointer; border: 1px solid var(--border); border-radius: 6px; padding: 5px 28px 5px 10px; background: var(--panel); white-space: nowrap; position: relative; }
+.ms summary::-webkit-details-marker { display: none; }
+.ms summary::after { content: "▾"; position: absolute; right: 10px; color: var(--muted); }
+.ms summary:hover, .ms[open] summary { border-color: var(--accent); }
+.ms summary b { font-weight: 600; }
+.ms-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; min-width: 100%; max-height: 320px; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; }
+.ms-menu label { display: flex; padding: 4px 6px; border-radius: 4px; white-space: nowrap; cursor: pointer; }
+.ms-menu label:hover { background: var(--accent-soft); }
+.ms-menu .ms-actions { display: flex; gap: 6px; padding: 2px 2px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.ms-menu .ms-actions button { padding: 2px 8px; font-size: 12px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Dune Permits</h1>
+  <span id="fileInfo" class="muted">No exports loaded</span>
+  <span style="flex:1"></span>
+  <a href="index.html">Drop rates</a>
+  <input type="file" id="fileInput" accept=".json,application/json" multiple class="hidden">
+  <button id="openBtn">Load exports…</button>
+  <button id="clearBtn" class="hidden">Clear</button>
+</header>
+<main>
+  <div id="drop">
+    <p><b>Drop a <code>dune-augments-*.json</code> or blueprints export here</b></p>
+    <p class="muted">Or use “Load exports…”. Files are only read in this browser and remembered here. Loading a newer export of the same kind replaces the older one.</p>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="panel row">
+      <details class="ms" id="fType" data-key="type" data-label="Type"><summary></summary><div class="ms-menu"></div></details>
+      <details class="ms" id="fGroup" data-key="group" data-label="Category"><summary></summary><div class="ms-menu"></div></details>
+      <details class="ms" id="fTier" data-key="tier" data-label="Tier"><summary></summary><div class="ms-menu"></div></details>
+      <details class="ms" id="fGrade" data-key="grade" data-label="Grade"><summary></summary><div class="ms-menu"></div></details>
+      <label><input type="search" id="fSearch" placeholder="Search names…"></label>
+      <label><input type="checkbox" id="fOwned"> Only with permits</label>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="table-wrap"><table id="table"><thead></thead><tbody></tbody></table></div>
+    <p class="muted">Each grade column shows how many permits you hold for that grade; ∞ means unlimited. A blank cell means the item can't be crafted at that grade. Choosing grades hides items that can't be crafted at any of them, and the totals then count only those grades. Ticking several options in one filter shows items that match any of them. Category and tier come from <code>item-catalog.js</code>; items marked “not in catalog” use the export's own category until you add them there.</p>
+  </div>
+</main>
+
+<script src="item-catalog.js"></script>
+<script>
+(() => {
+  const $ = s => document.querySelector(s);
+  const LS_DATA = 'dune-permits:exports', LS_VIEW = 'dune-permits:view';
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = n => n.toLocaleString();
+  const fmtDate = ms => new Date(ms).toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const normName = n => String(n).replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+  const TIERS = ['S', 'A', 'B', 'C'];
+  // The master catalog is the source of truth for kind, group and tier; the export's own groupName is only
+  // a fallback for items the catalog doesn't list yet.
+  const catalog = new Map();
+  for (const [kind, groups] of Object.entries(window.ITEM_CATALOG || {}))
+    for (const [group, items] of Object.entries(groups))
+      for (const [name, tier] of Object.entries(items))
+        if (!catalog.has(normName(name))) catalog.set(normName(name), { kind, group, tier: TIERS.includes(tier) ? tier : '' });
+  const typeLabel = t => t === 'augments' ? 'Augments' : t === 'blueprints' ? 'Blueprints' : t.charAt(0).toUpperCase() + t.slice(1);
+
+  // { [exportType]: { exportType, exportedAt, fileName, items: [{ name, group, grades, permits: { grade: count, or null for unlimited } }] } }
+  let exportsByType = store.get(LS_DATA, {});
+  const view = Object.assign({ search: '', owned: false, sort: { key: 'tier', dir: 1 } }, store.get(LS_VIEW, {}));
+  // Multi-select filters: each holds the ticked values as strings; empty means no filter.
+  for (const k of ['type', 'group', 'tier', 'grade']) view[k] = Array.isArray(view[k]) ? view[k].map(String) : view[k] ? [String(view[k])] : [];
+
+  function parse(text, fileName) {
+    let d;
+    try { d = JSON.parse(text); } catch { alert(`${fileName}: not valid JSON.`); return null; }
+    const nodes = d?.data?.nodes, recipes = d?.data?.recipes || [];
+    if (!Array.isArray(nodes)) {
+      alert(Array.isArray(d?.data?.sessions)
+        ? `${fileName} is a sessions export. Load it on the Drop rates page instead.`
+        : `${fileName}: no data.nodes list found. Is this an augments or blueprints export?`);
+      return null;
+    }
+    const permits = new Map();
+    for (const r of recipes) {
+      const m = permits.get(r.recipeId) || {};
+      m[r.grade] = r.isLimitedUse === false || m[r.grade] === null ? null : (m[r.grade] || 0) + (r.permitCount || 0);
+      permits.set(r.recipeId, m);
+    }
+    const items = [];
+    for (const n of nodes) for (const u of n.unlocks || []) {
+      if (!u.name) continue;
+      items.push({ name: u.name.trim(), group: n.groupName || '', grades: u.supportedGrades || [], permits: permits.get(u.recipeId) || {} });
+    }
+    const exportType = d.exportType || fileName.match(/dune-(\w+)-/)?.[1] || 'unknown';
+    return { exportType, exportedAt: d.exportedAt ? Date.parse(d.exportedAt) : 0, fileName, items };
+  }
+
+  async function addFiles(files) {
+    for (const f of files) {
+      const p = parse(await f.text(), f.name);
+      if (!p) continue;
+      const old = exportsByType[p.exportType];
+      if (old && old.exportedAt > p.exportedAt &&
+          !confirm(`${f.name} is older than the ${typeLabel(p.exportType).toLowerCase()} export already loaded. Replace it anyway?`)) continue;
+      exportsByType[p.exportType] = p;
+    }
+    if (!store.set(LS_DATA, exportsByType)) $('#fileInfo').title = 'This browser blocked local storage, so exports must be loaded again after reloading.';
+    render();
+  }
+
+  const allItems = () => Object.values(exportsByType).flatMap(e => e.items.map(it => {
+    const c = catalog.get(normName(it.name));
+    return { ...it, type: c?.kind || e.exportType, group: c?.group || it.group, tier: c?.tier || '', unlisted: !c };
+  }));
+
+  // Fills a checkbox dropdown and drops ticked values that are no longer offered.
+  function multi(sel, list) {
+    const el = $(sel), key = el.dataset.key;
+    view[key] = view[key].filter(v => list.some(([o]) => String(o) === v));
+    const picked = new Set(view[key]);
+    el.querySelector('.ms-menu').innerHTML = `<div class="ms-actions"><button type="button" data-ms="all">All</button><button type="button" data-ms="none">Clear</button></div>` +
+      list.map(([v, l]) => `<label><input type="checkbox" value="${esc(v)}" ${picked.has(String(v)) ? 'checked' : ''}> ${esc(l)}</label>`).join('');
+    const names = list.filter(([v]) => picked.has(String(v))).map(([, l]) => l);
+    el.querySelector('summary').innerHTML = `${esc(el.dataset.label)}: <b>${!names.length || names.length === list.length ? 'All' : names.length === 1 ? esc(names[0]) : `${names.length} selected`}</b>`;
+  }
+
+  function render(restore) {
+    const types = Object.keys(exportsByType).sort();
+    $('#drop').classList.toggle('hidden', types.length > 0);
+    $('#app').classList.toggle('hidden', types.length === 0);
+    $('#clearBtn').classList.toggle('hidden', types.length === 0);
+    $('#fileInfo').textContent = types.length
+      ? types.map(t => `${typeLabel(t)} · exported ${exportsByType[t].exportedAt ? fmtDate(exportsByType[t].exportedAt) : '?'}`).join('  ·  ')
+      : 'No exports loaded';
+    if (!types.length) return;
+
+    const all = allItems();
+    const kinds = [...new Set(all.map(i => i.type))].sort();
+    $('#fType').classList.toggle('hidden', kinds.length < 2);
+    multi('#fType', kinds.map(t => [t, typeLabel(t)]));
+    const pool = all.filter(i => !view.type.length || view.type.includes(i.type));
+    multi('#fGroup', [...new Set(pool.map(i => i.group))].filter(Boolean).sort().map(g => [g, g]));
+    multi('#fTier', [...TIERS.map(t => [t, `${t}-Tier`]), ['none', 'Untiered']]);
+    const gradeList = Array.from({ length: Math.max(5, ...all.flatMap(i => i.grades)) }, (_, i) => i + 1);
+    multi('#fGrade', gradeList.map(g => [g, `Grade ${g}`]));
+    if (restore) { $('#fSearch').value = view.search; $('#fOwned').checked = view.owned; }
+    renderTable(all, gradeList);
+  }
+
+  function renderTable(all, gradeList) {
+    const q = $('#fSearch').value.trim().toLowerCase(), owned = $('#fOwned').checked;
+    Object.assign(view, { search: $('#fSearch').value, owned });
+    store.set(LS_VIEW, view);
+    const grades = view.grade.map(Number).sort((a, b) => a - b), gradeSet = new Set(grades);
+    const gradeTag = grades.length ? ` (${grades.map(g => 'G' + g).join(', ')})` : '';
+    const any = (key, v) => !view[key].length || view[key].includes(v);
+
+    // Permits for the selected grades, or all grades; Infinity when any counted grade is unlimited.
+    const count = it => {
+      let n = 0;
+      for (const g of grades.length ? grades : Object.keys(it.permits).map(Number)) {
+        if (!(g in it.permits)) continue;
+        if (it.permits[g] === null) return Infinity;
+        n += it.permits[g];
+      }
+      return n;
+    };
+    const rows = all.filter(it =>
+      any('type', it.type) && any('group', it.group) && any('tier', it.tier || 'none') &&
+      (!grades.length || grades.some(g => it.grades.includes(g) || g in it.permits)) &&
+      (!q || it.name.toLowerCase().includes(q)) &&
+      (!owned || count(it) > 0));
+
+    const tierRank = t => t ? TIERS.indexOf(t) : TIERS.length;
+    const cols = [
+      { key: 'name', label: 'Name', get: it => it.name.toLowerCase() },
+      { key: 'tier', label: 'Tier', get: it => tierRank(it.tier) },
+      { key: 'group', label: 'Category', get: it => it.group },
+      ...gradeList.map(g => ({ key: 'g' + g, label: `G${g}`, num: true, g, get: it => it.permits[g] === null ? Infinity : it.permits[g] || 0 })),
+      { key: 'total', label: 'Total' + gradeTag, num: true, get: count }
+    ];
+    if (!cols.some(c => c.key === view.sort.key)) view.sort = { key: 'tier', dir: 1 };
+    const sc = cols.find(c => c.key === view.sort.key);
+    const cmp = (x, y) => typeof x === 'string' ? x.localeCompare(y) : x === y ? 0 : x < y ? -1 : 1;
+    rows.sort((a, b) => cmp(sc.get(a), sc.get(b)) * view.sort.dir || tierRank(a.tier) - tierRank(b.tier) || a.name.localeCompare(b.name));
+
+    $('#table thead').innerHTML = '<tr>' + cols.map(col =>
+      `<th data-key="${col.key}" class="${col.num ? 'num' : ''}${gradeSet.has(col.g) ? ' focus' : ''}">${esc(col.label)}${view.sort.key === col.key ? (view.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr>';
+    $('#table thead').onclick = e => {
+      const k = e.target.closest('th')?.dataset.key;
+      if (!k) return;
+      view.sort = view.sort.key === k ? { key: k, dir: -view.sort.dir } : { key: k, dir: cols.find(c => c.key === k).num ? -1 : 1 };
+      render();
+    };
+    const cell = (it, g) => {
+      const focus = gradeSet.has(g) ? ' focus' : '';
+      if (!it.grades.includes(g) && !(g in it.permits)) return `<td class="num${focus}" title="Not craftable at grade ${g}"></td>`;
+      const v = it.permits[g];
+      return v === null ? `<td class="num${focus}">∞</td>` : v ? `<td class="num${focus}">${fmt(v)}</td>` : `<td class="num zero${focus}">0</td>`;
+    };
+    $('#table tbody').innerHTML = rows.map(it => {
+      const total = count(it);
+      return `<tr><td>${esc(it.name)}${it.unlisted ? ' <span class="tier none" title="Add this item to item-catalog.js to set its category and tier">not in catalog</span>' : ''}</td>
+        <td>${it.tier ? `<span class="tier ${it.tier}">${it.tier}</span>` : '<span class="tier none">—</span>'}</td>
+        <td class="muted">${esc(it.group)}</td>
+        ${gradeList.map(g => cell(it, g)).join('')}
+        <td class="num"><b>${total === Infinity ? '∞' : total ? fmt(total) : '<span class="muted">0</span>'}</b></td></tr>`;
+    }).join('') || `<tr><td colspan="${cols.length}" class="muted">No items match.</td></tr>`;
+
+    const totals = rows.map(count), finite = totals.filter(n => n !== Infinity);
+    $('#stats').innerHTML = [
+      ['Items shown', fmt(rows.length)],
+      ['With permits', fmt(totals.filter(n => n > 0).length)],
+      ['Permits' + gradeTag, fmt(finite.reduce((a, n) => a + n, 0)) + (finite.length < totals.length ? ' + ∞' : '')]
+    ].map(([l, v]) => `<div class="stat"><span class="muted">${l}</span><b>${v}</b></div>`).join('');
+  }
+
+  ['#fSearch', '#fOwned'].forEach(s => $(s).addEventListener('input', () => render()));
+  document.querySelectorAll('.ms').forEach(el => {
+    const key = el.dataset.key, menu = el.querySelector('.ms-menu');
+    el.addEventListener('toggle', () => { if (el.open) document.querySelectorAll('.ms[open]').forEach(o => { if (o !== el) o.open = false; }); });
+    menu.addEventListener('change', () => { view[key] = [...menu.querySelectorAll('input:checked')].map(i => i.value); render(); });
+    menu.addEventListener('click', e => {
+      const act = e.target.dataset.ms;
+      if (!act) return;
+      view[key] = act === 'all' ? [...menu.querySelectorAll('input')].map(i => i.value) : [];
+      render();
+    });
+  });
+  // Close an open dropdown on a click elsewhere or Escape.
+  document.addEventListener('click', e => document.querySelectorAll('.ms[open]').forEach(o => { if (!o.contains(e.target)) o.open = false; }));
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.ms[open]').forEach(o => { o.open = false; }); });
+  $('#openBtn').onclick = () => $('#fileInput').click();
+  $('#fileInput').onchange = e => { addFiles([...e.target.files]); e.target.value = ''; };
+  $('#clearBtn').onclick = () => {
+    if (!confirm('Remove the loaded exports from this browser?')) return;
+    exportsByType = {}; store.del(LS_DATA); render();
+  };
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+  document.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+    const files = [...(e.dataTransfer?.files || [])].filter(f => /\.json$/i.test(f.name));
+    if (files.length) addFiles(files);
+  });
+
+  render(true);
+})();
+</script>
+</body>
+</html>

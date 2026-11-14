@@ -40,11 +40,11 @@ Every item seen across all loaded sessions, in three sections:
 
 | Section | Contents |
 | --- | --- |
-| Augments | Augment blueprints |
+| Augments | Augment blueprints, grouped by in-game category (Garment, Generic, Melee and Ranged Weapon Augmentations) |
 | Blueprints | Weapon, armor and accessory blueprints |
 | Other | Everything else, including crafted items that share a name with a blueprint, resources and currencies |
 
-Untick an item to leave it out of the drop rates. The Augments and Blueprints lists are fixed and come from [`item-catalog.js`](item-catalog.js). Edit that file to add or rename entries; names are matched without regard to capitals.
+Untick an item to leave it out of the drop rates. The Augments and Blueprints lists and their groups come from the master item catalog (see [Item catalog](#item-catalog)).
 
 ### 4 · Drop rates
 
@@ -69,6 +69,56 @@ Click an item to chart it over time:
 - **Run-based moving average:** the window holds whole sessions. It keeps the fewest recent sessions that add up to at least N runs. It divides by the window's actual run total, not by N.
 - **Show chart data:** lists each session with its runs, drops, per-session rate, cumulative rate and moving average.
 
+## Permits page
+
+`permits.html` (linked as **Permits** from the drop rates page) tracks how many crafting permits you hold for each augment and blueprint.
+
+1. Open `permits.html`.
+2. Drop a `dune-augments-*.json` export (and a blueprints export, if you have one) onto the page, or use **Load exports…**.
+
+Loading a newer export of the same kind replaces the older one, and the data is remembered in the browser.
+
+The table shows:
+
+- **Tier:** S, A, B or C, from the [item catalog](#item-catalog).
+- **Category:** the item's group from the item catalog, such as Ranged Weapon Augmentations. An item missing from the catalog is marked *not in catalog* and uses the export's own group.
+- **G1 to G5:** permits held at each grade. A blank cell means the item can't be crafted at that grade, and ∞ means unlimited.
+- **Total:** permits across all grades.
+
+**Filters:** Type, Category, Tier and Grade are multi-select dropdowns. Tick several options in one filter to show items that match any of them; **All** and **Clear** in each dropdown reset it.
+
+- **Type:** augments or blueprints. Only appears once both kinds are loaded.
+- **Category:** the item catalog's groups.
+- **Tier:** S, A, B, C or untiered.
+- **Grade:** hides items that can't be crafted at any chosen grade, highlights those grade columns, and makes the totals count only those grades.
+- **Name search.**
+- **Only with permits.**
+
+Click any column heading to sort.
+
+## Item catalog
+
+[`item-catalog.js`](item-catalog.js) is the single source of truth for how items are classified and ranked. Both pages read it.
+
+```js
+window.ITEM_CATALOG = {
+  augments: {
+    "Garment Augmentations": { "Blade-warding Weave": "S", ... },
+    ...
+  },
+  blueprints: {
+    "Weapons": { ... }, "Armor": { ... }, "Accessories": { ... }
+  }
+};
+```
+
+- **Kind:** `augments` or `blueprints`.
+- **Group:** augment groups are the in-game `groupName` from the augments export; blueprint groups are Weapons, Armor and Accessories.
+- **Tier:** `"S"`, `"A"`, `"B"`, `"C"`, or `""` for untiered. Tiers came from the *Dune Awakening* tier-list spreadsheet.
+- **Names:** matched to exports without regard to capitals.
+
+To add an item, change its group, or re-rank it, edit this file.
+
 ## Saving your choices
 
 Session exclusions, item exclusions and chart settings are remembered in the browser (localStorage).
@@ -79,5 +129,6 @@ Use **Save selections** to write your session and item exclusions to a file. Use
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | The whole app: markup, styles and script |
-| `item-catalog.js` | Fixed Augment and Blueprint name lists for the Items tab |
+| `index.html` | The drop rates page: markup, styles and script |
+| `permits.html` | The Permits page |
+| `item-catalog.js` | Master item catalog: kind, group and tier for every augment and blueprint |

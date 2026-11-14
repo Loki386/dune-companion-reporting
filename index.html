@@ -91,6 +91,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   <h1>Dune Drop Rates</h1>
   <span id="fileInfo" class="muted">No exports loaded</span>
   <span style="flex:1"></span>
+  <a href="permits.html" style="color:var(--accent)">Permits</a>
   <input type="file" id="fileInput" accept=".json,application/json" multiple class="hidden">
   <button id="openBtn">Add exports…</button>
   <button id="exportSel" title="Save your include/exclude choices to a file">Save selections</button>
@@ -215,12 +216,10 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   // Fixed sections from item-catalog.js, keyed by normalized name.
   const normName = n => n.replace(/[‘’]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
   const CATALOG = window.ITEM_CATALOG || {};
+  const catalogGroups = kind => Object.entries(CATALOG[kind] || {}).map(([title, items]) => ({ title, names: Object.keys(items) }));
   const SECTIONS = [
-    { key: 'augments', title: 'Augments', groups: [{ title: null, names: CATALOG.augments || [] }] },
-    { key: 'blueprints', title: 'Blueprints', groups: [
-      { title: 'Weapons', names: CATALOG.weaponBlueprints || [] },
-      { title: 'Armor', names: CATALOG.armorBlueprints || [] },
-      { title: 'Accessories', names: CATALOG.accessoryBlueprints || [] }] },
+    { key: 'augments', title: 'Augments', groups: catalogGroups('augments') },
+    { key: 'blueprints', title: 'Blueprints', groups: catalogGroups('blueprints') },
     { key: 'other', title: 'Other', groups: [{ title: null, names: null }] }
   ];
   const catalogNames = new Set(SECTIONS.flatMap(s => s.groups.flatMap(g => (g.names || []).map(normName))));
