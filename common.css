@@ -1,0 +1,22 @@
+/* Styles shared by drop-rates.html and permits.html. Colors come from each page's :root tokens. */
+
+/* Rank badges: S, A, B, C; .none for unranked or a muted note. */
+.rank { display: inline-block; min-width: 22px; text-align: center; padding: 1px 6px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+.rank.S { background: var(--ok-soft); color: var(--ok); }
+.rank.A { background: var(--accent-soft); color: var(--accent); }
+.rank.B { background: var(--warn-soft); color: var(--warn); }
+.rank.C { background: var(--bad-soft); color: var(--bad); }
+.rank.none { color: var(--muted); font-weight: 400; }
+
+/* Multi-select dropdown (Common.multiSelect): <details class="ms" data-label="…"><summary></summary><div class="ms-menu"></div></details> */
+.ms { position: relative; }
+.ms summary { list-style: none; cursor: pointer; margin: 0; color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px 28px 5px 10px; background: var(--panel); white-space: nowrap; position: relative; }
+.ms summary::-webkit-details-marker { display: none; }
+.ms summary::after { content: "▾"; position: absolute; right: 10px; color: var(--muted); }
+.ms summary:hover, .ms[open] summary { border-color: var(--accent); }
+.ms summary b { font-weight: 600; }
+.ms-menu { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; min-width: 100%; max-height: 320px; overflow: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.12); padding: 6px; }
+.ms-menu label { display: flex; padding: 4px 6px; border-radius: 4px; white-space: nowrap; cursor: pointer; }
+.ms-menu label:hover { background: var(--accent-soft); }
+.ms-menu .ms-actions { display: flex; gap: 6px; padding: 2px 2px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+.ms-menu .ms-actions button { padding: 2px 8px; font-size: 12px; }

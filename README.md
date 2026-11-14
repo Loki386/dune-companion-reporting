@@ -53,9 +53,15 @@ Every item seen across all loaded sessions, in three sections:
 | --- | --- |
 | Augments | Augment blueprints, grouped by the item catalog's augment groups (Garment, Melee Weapon and Ranged Weapon) |
 | Blueprints | Weapon, armor and utility blueprints (T6: Armor, Utility and Weapons) |
-| Other | Everything else, including crafted items that share a name with a blueprint, resources and currencies |
+| Other | Everything else, such as resources, consumables and currencies |
 
-Untick an item to leave it out of the drop rates. The Augments and Blueprints lists and their groups come from the master item catalog (see [Item catalog](#item-catalog)).
+Untick an item to leave it out of the drop rates. The Augments and Blueprints lists, their categories and ranks come from the master item catalog (see [Item catalog](#item-catalog)).
+
+- **Crafted copies left out:** a crafted item with the same name as a catalog augment or blueprint (for example a crafted Power Harness) is left out of the Items tab and the drop rates altogether. Those items only drop as blueprints; a crafted one in an export was looted from a corpse or base. The Pick sessions loot list still shows everything the export recorded.
+- **Columns:** Use, Item, Category, Rank, Seen in sessions and Total. Items in the Other section have the category Other and no rank.
+- **Filters:** Category and Rank are multi-select dropdowns, alongside the name search. Your choices are remembered.
+- **Include all / Exclude all:** each section and each category has its own pair of buttons. They change the items listed under it, so the filters and search narrow what they change.
+- **Collapsing:** click a section or category heading to fold it away. Folded panes stay folded next time.
 
 #### 4 · Drop rates
 
@@ -181,5 +187,6 @@ Use **Save selections** to write your session and item exclusions to a file. Use
 | `index.html` | Home page: switches between the two tools with tabs |
 | `drop-rates.html` | The Drop rates page |
 | `permits.html` | The Permits page |
-| `common.js` | Helpers shared by both pages |
+| `common.js` | Helpers shared by both pages, including the multi-select dropdown |
+| `common.css` | Styles shared by both pages: rank badges and the multi-select dropdown |
 | `item-catalog.js` | Master item catalog: kind, category and rank for every augment and blueprint, plus category overrides |

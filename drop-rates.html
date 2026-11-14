@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dune Drop Rates</title>
+<link rel="stylesheet" href="common.css">
 <style>
 :root {
   --bg: #f7f6f3; --panel: #ffffff; --text: #1d1c1a; --muted: #6b6862; --border: #e2dfd8;
@@ -62,9 +63,18 @@ tr.selected td { background: var(--accent-soft); }
 .pill.bad { background: var(--bad-soft); color: var(--bad); }
 .pill.manual { background: var(--accent-soft); color: var(--accent); }
 .pill.bp { background: var(--accent-soft); color: var(--accent); }
+/* Items tab: collapsible sections (.item-section) holding collapsible categories (.item-cat). */
 .item-section { margin-bottom: 14px; }
-.item-section h2 { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
-.item-section h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted); }
+.item-section summary { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0; color: var(--text); cursor: pointer; }
+.item-section summary::-webkit-details-marker { display: none; }
+.item-section summary::before { content: "▸"; width: 12px; color: var(--muted); }
+.item-section[open] > summary::before, .item-cat[open] > summary::before { content: "▾"; }
+.item-section > summary { font-size: 15px; font-weight: 600; }
+.item-cat { margin-top: 12px; }
+.item-cat > summary { font-size: 13px; font-weight: 600; color: var(--muted); }
+.item-cat[open] > summary { margin-bottom: 6px; }
+.item-section .count { font-weight: normal; color: var(--muted); }
+.item-section summary button { padding: 2px 8px; font-size: 12px; font-weight: normal; }
 .bar { position: relative; }
 .bar span { position: relative; z-index: 1; }
 .bar::before { content: ""; position: absolute; right: 0; top: 4px; bottom: 4px; width: var(--w, 0%); background: var(--bar); opacity: .35; border-radius: 3px; }
@@ -146,7 +156,9 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 
     <section id="tab-items" class="hidden">
       <div class="panel row">
-        <p class="muted" style="margin:0;flex:1 1 300px">Untick an item to leave it out of the drop rates. Augments and Blueprints list only blueprint drops; the items they craft are under Other. Counts cover every loaded session.</p>
+        <p class="muted" style="margin:0;flex:1 1 300px">Untick an item to leave it out of the drop rates. Augments and Blueprints list blueprint drops. Crafted items with the same name as one of those blueprints are left out entirely, since they only come from looting corpses or bases, never from dungeon drops. Counts cover every loaded session. Include all and Exclude all change the items listed under that section or category.</p>
+        <details class="ms" id="iCat" data-label="Category"><summary></summary><div class="ms-menu"></div></details>
+        <details class="ms" id="iRank" data-label="Rank"><summary></summary><div class="ms-menu"></div></details>
         <label><input type="search" id="iSearch" placeholder="Filter items…"></label>
       </div>
       <div id="itemSections"></div>
@@ -188,7 +200,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
 <script src="item-catalog.js"></script>
 <script>
 (() => {
-  const { $, esc, plural, fmtDate, normName, byCategory, store, hideHomeLinkInFrame, onJsonDrop } = window.Common;
+  const { $, esc, plural, fmtDate, normName, byCategory, store, hideHomeLinkInFrame, onJsonDrop, multiSelect, RANKS } = window.Common;
   hideHomeLinkInFrame();
 
   // ---------- formatting ----------
@@ -198,13 +210,14 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   const fmtDay = ms => new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
   // ---------- state ----------
-  const LS_OVR = 'dune-drops:overrides', LS_CHART = 'dune-drops:chart', LS_ITEMS = 'dune-drops:excludedItems';
+  const LS_OVR = 'dune-drops:overrides', LS_CHART = 'dune-drops:chart', LS_ITEMS = 'dune-drops:excludedItems', LS_ITEM_VIEW = 'dune-drops:itemView';
   let sources = [];  // one per loaded export: { key, label, fileName, exportedAt, raw: [...sessions], used }
   let sessions = []; // normalized sessions from every source, de-duplicated by session id
   // Sessions the user unticked ({ sessionId: false }); every other single dungeon/level session is included.
   let overrides = Object.fromEntries(Object.entries(store.get(LS_OVR, {})).filter(([, v]) => v === false));
   let excludedItems = new Set(store.get(LS_ITEMS, [])); // item ids left out of the drop rates
   let itemIndex = new Map();                             // id -> { id, name, cur, sessions, total }
+  const itemView = Object.assign({ cat: [], rank: [], collapsed: [] }, store.get(LS_ITEM_VIEW, {})); // Items tab filters and folded panes
   let chartOpts = Object.assign({ metric: 'rate', win: 10, unit: 'sessions' }, store.get(LS_CHART, {}));
   let sessSort = { key: 'start', dir: -1 }, dropSort = { key: 'perRun', dir: -1 };
   let expanded = new Set(), selectedItem = null;
@@ -213,19 +226,26 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   const bpPill = id => isBlueprint(id) ? ' <span class="pill bp">blueprint</span>' : '';
 
   // ---------- item catalog (item-catalog.js) ----------
-  // Augments and Blueprints list the catalog's groups; Other holds every other observed item.
+  // Augments and Blueprints list the catalog's categories; Other holds every other observed item.
   const CATALOG = window.ITEM_CATALOG || {};
+  const OTHER = 'Other';
   const catalogGroups = kind => Object.entries(CATALOG[kind] || {})
-    .map(([title, items]) => ({ title, names: Object.keys(items) }))
+    .map(([title, items]) => ({ title, names: Object.keys(items), ranks: items }))
     .sort((a, b) => byCategory(a.title, b.title));
   const SECTIONS = [
     { key: 'augments', title: 'Augments', groups: catalogGroups('augments') },
     { key: 'blueprints', title: 'Blueprints', groups: catalogGroups('blueprints') },
-    { key: 'other', title: 'Other', groups: [{ title: null, names: null }] }
+    { key: 'other', title: OTHER, groups: null } // built from the observed items, under the one category Other
   ];
-  const catalogNames = new Set(SECTIONS.flatMap(s => s.groups.flatMap(g => (g.names || []).map(normName))));
-  // Only blueprint drops of listed names belong to Augments/Blueprints; the items they craft go to Other.
-  const inCatalog = it => isBlueprint(it.id) && catalogNames.has(normName(it.name));
+  const listedGroups = SECTIONS.flatMap(s => s.groups || []);
+  const CATEGORIES = [...listedGroups.map(g => g.title), OTHER];
+  const catalogCategory = new Map(); // normalized name -> catalog category
+  for (const g of listedGroups) for (const n of g.names) if (!catalogCategory.has(normName(n))) catalogCategory.set(normName(n), g.title);
+  // Only blueprint drops of listed names belong to Augments/Blueprints.
+  const inCatalog = it => isBlueprint(it.id) && catalogCategory.has(normName(it.name));
+  // A crafted item named after a catalog blueprint can't drop in a dungeon (those only drop as blueprints); it
+  // comes from looting a corpse or base. Such items are left out of the Items tab and the drop rates.
+  const isCraftedCopy = (id, name) => !isBlueprint(id) && catalogCategory.has(normName(name));
 
   // ---------- export storage (IndexedDB, so several large exports survive reloads) ----------
   const idb = {
@@ -291,6 +311,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     for (const s of sessions) sources.find(x => x.key === s.source).used++;
     itemIndex = new Map();
     for (const s of sessions) for (const [id, e] of s.loot) {
+      if (isCraftedCopy(id, e.name)) continue;
       const it = itemIndex.get(id) || { id, name: e.name, cur: e.cur, sessions: 0, total: 0 };
       it.sessions++; it.total += e.amount; itemIndex.set(id, it);
     }
@@ -503,47 +524,75 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
   $('#excAll').onclick = () => setIncluded(shownEligible(), false);
 
   // ---------- items tab ----------
-  // Each group's rows, A-Z: listed names map to their observed blueprint, or a placeholder if that
-  // blueprint hasn't dropped yet. Other holds everything else.
-  function sectionRows(section) {
+  // A section's categories, each with its rows A-Z and every row carrying its category and rank.
+  // Augments/Blueprints: listed names map to their observed blueprint, or a placeholder if it hasn't dropped yet.
+  // Other: every other observed item, under the one category Other.
+  function sectionGroups(section) {
+    const alpha = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+    if (!section.groups) {
+      const rows = [...itemIndex.values()].filter(it => !inCatalog(it)).map(it => ({ ...it, category: OTHER, rank: '' }));
+      return [{ title: OTHER, rows: rows.sort(alpha) }];
+    }
     const seen = new Map(); // normalized name -> observed catalog blueprint
     for (const it of itemIndex.values()) if (inCatalog(it)) seen.set(normName(it.name), it);
-    const alpha = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })
-      || isBlueprint(b.id) - isBlueprint(a.id);
     return section.groups.map(g => {
-      const rows = g.names
-        ? [...new Map(g.names.map(n => [normName(n), seen.get(normName(n)) || { id: null, name: n }])).values()]
-        : [...itemIndex.values()].filter(it => !inCatalog(it));
-      return { title: g.title, rows: rows.sort(alpha) };
+      const rows = new Map(g.names.map(n => [normName(n), { ...(seen.get(normName(n)) || { id: null, name: n }), category: g.title, rank: g.ranks[n] || '' }]));
+      return { title: g.title, rows: [...rows.values()].sort(alpha) };
     });
   }
 
-  function renderItems() {
+  // What the filters leave: categories picked in the Category filter, and their rows after Rank and search.
+  const visibleGroups = section => sectionGroups(section).filter(g => !itemView.cat.length || itemView.cat.includes(g.title));
+  function shownRows(group) {
     const q = $('#iSearch').value.trim().toLowerCase();
-    $('#itemSections').innerHTML = SECTIONS.map(sec => {
-      const groups = sectionRows(sec);
-      const ids = groups.flatMap(g => g.rows.filter(r => r.id).map(r => r.id));
-      const inc = ids.filter(id => !excludedItems.has(id)).length;
-      const tables = groups.map(g => {
-        const rows = g.rows.filter(r => !q || r.name.toLowerCase().includes(q));
-        if (!rows.length) return '';
-        return `${g.title ? `<h3>${esc(g.title)}</h3>` : ''}<div class="table-wrap"><table>
-          <thead><tr><th>Use</th><th>Item</th><th class="num">Seen in sessions</th><th class="num">Total</th></tr></thead><tbody>
-          ${rows.map(r => r.id ? `<tr data-item="${esc(r.id)}">
-              <td><input type="checkbox" ${excludedItems.has(r.id) ? '' : 'checked'}></td>
-              <td>${esc(r.name)}${bpPill(r.id)}${r.cur ? ' <span class="pill ok">currency</span>' : ''}</td>
-              <td class="num">${fmt(r.sessions)}</td><td class="num">${fmt(r.total)}</td></tr>`
-            : `<tr class="ineligible"><td><input type="checkbox" disabled></td><td>${esc(r.name)}</td><td class="num" colspan="2">not seen yet</td></tr>`).join('')}
-          </tbody></table></div>`;
-      }).join('');
-      return `<div class="panel item-section" data-section="${sec.key}">
-        <h2>${esc(sec.title)} <span class="muted" style="font-weight:normal">${inc} of ${ids.length} included</span>
-          <span style="flex:1"></span><button data-all="1">Include all</button><button data-all="0">Exclude all</button></h2>
-        ${tables || '<p class="muted">No items match.</p>'}</div>`;
-    }).join('');
+    return group.rows.filter(r => (!itemView.rank.length || itemView.rank.includes(r.rank || 'none')) && (!q || r.name.toLowerCase().includes(q)));
   }
-  function setItems(ids, include) {
-    for (const id of ids) include ? excludedItems.delete(id) : excludedItems.add(id);
+  const ids = rows => rows.filter(r => r.id).map(r => r.id);
+
+  const itemFilters = {
+    cat: multiSelect($('#iCat'), { getPicked: () => itemView.cat, setPicked: v => { itemView.cat = v; }, onChange: renderItems }),
+    rank: multiSelect($('#iRank'), { getPicked: () => itemView.rank, setPicked: v => { itemView.rank = v; }, onChange: renderItems })
+  };
+
+  function renderItems() {
+    itemFilters.cat.fill(CATEGORIES.map(c => [c, c]));
+    itemFilters.rank.fill([...RANKS.map(r => [r, `${r}-Rank`]), ['none', 'Unranked']]);
+    store.set(LS_ITEM_VIEW, itemView);
+
+    const rankCell = r => r ? `<span class="rank ${r}">${r}</span>` : '<span class="rank none">—</span>';
+    const counts = rows => { const all = ids(rows); return `<span class="count">${all.filter(id => !excludedItems.has(id)).length} of ${all.length} included</span>`; };
+    const buttons = attrs => `<span style="flex:1"></span><button data-all="1" ${attrs}>Include all</button><button data-all="0" ${attrs}>Exclude all</button>`;
+    const open = key => itemView.collapsed.includes(key) ? '' : 'open';
+    const row = r => r.id
+      ? `<tr data-item="${esc(r.id)}"><td><input type="checkbox" ${excludedItems.has(r.id) ? '' : 'checked'}></td>
+          <td>${esc(r.name)}${bpPill(r.id)}${r.cur ? ' <span class="pill ok">currency</span>' : ''}</td>
+          <td class="muted">${esc(r.category)}</td><td>${rankCell(r.rank)}</td>
+          <td class="num">${fmt(r.sessions)}</td><td class="num">${fmt(r.total)}</td></tr>`
+      : `<tr class="ineligible"><td><input type="checkbox" disabled></td><td>${esc(r.name)}</td>
+          <td>${esc(r.category)}</td><td>${rankCell(r.rank)}</td><td class="num" colspan="2">not seen yet</td></tr>`;
+
+    $('#itemSections').innerHTML = SECTIONS.map(sec => {
+      const groups = visibleGroups(sec);
+      if (!groups.length) return '';
+      const categories = groups.map(g => {
+        const rows = shownRows(g);
+        if (!rows.length) return '';
+        const key = `${sec.key}|${g.title}`;
+        return `<details class="item-cat" data-fold="${esc(key)}" ${open(key)}>
+          <summary>${esc(g.title)} ${counts(g.rows)}${buttons(`data-sec="${sec.key}" data-cat="${esc(g.title)}"`)}</summary>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Use</th><th>Item</th><th>Category</th><th>Rank</th><th class="num">Seen in sessions</th><th class="num">Total</th></tr></thead>
+            <tbody>${rows.map(row).join('')}</tbody>
+          </table></div></details>`;
+      }).join('');
+      return `<details class="panel item-section" data-fold="${sec.key}" ${open(sec.key)}>
+        <summary>${esc(sec.title)} ${counts(sectionGroups(sec).flatMap(g => g.rows))}${buttons(`data-sec="${sec.key}"`)}</summary>
+        ${categories || '<p class="muted">No items match.</p>'}</details>`;
+    }).join('') || '<div class="panel muted">No categories selected.</div>';
+  }
+
+  function setItems(list, include) {
+    for (const id of list) include ? excludedItems.delete(id) : excludedItems.add(id);
     store.set(LS_ITEMS, [...excludedItems]);
     renderItems(); renderDrops();
   }
@@ -552,10 +601,21 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     if (e.target.matches('input[type=checkbox]')) {
       setItems([e.target.closest('tr').dataset.item], e.target.checked);
     } else if (e.target.matches('button[data-all]')) {
-      const sec = SECTIONS.find(s => s.key === e.target.closest('[data-section]').dataset.section);
-      setItems(sectionRows(sec).flatMap(g => g.rows.filter(r => r.id).map(r => r.id)), e.target.dataset.all === '1');
+      // Include/Exclude all change the rows listed under that section or category, so the filters and search
+      // narrow them. The buttons sit in a <summary>, so stop the click from also folding the pane.
+      e.preventDefault();
+      const { sec, cat, all } = e.target.dataset;
+      const groups = visibleGroups(SECTIONS.find(s => s.key === sec)).filter(g => !cat || g.title === cat);
+      setItems(ids(groups.flatMap(shownRows)), all === '1');
     }
   });
+  // Remember which sections and categories are folded ("toggle" doesn't bubble, so listen while capturing).
+  $('#itemSections').addEventListener('toggle', e => {
+    const key = e.target.dataset?.fold;
+    if (key === undefined) return;
+    itemView.collapsed = itemView.collapsed.filter(k => k !== key).concat(e.target.open ? [] : [key]);
+    store.set(LS_ITEM_VIEW, itemView);
+  }, true);
 
   // ---------- drop rates tab ----------
   // Included sessions, limited to the chosen account.
@@ -572,6 +632,7 @@ details summary { cursor: pointer; color: var(--muted); margin-top: 8px; }
     for (const s of list) {
       runs += s.runCount;
       for (const [id, e] of s.loot) {
+        if (isCraftedCopy(id, e.name)) continue;
         const a = items.get(id) || { id, name: e.name, cur: e.cur, total: 0, sessions: 0 };
         a.total += e.amount; a.sessions++;
         items.set(id, a);
